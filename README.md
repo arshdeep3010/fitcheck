@@ -6,7 +6,7 @@ FitCheck reads a JD, searches my real repositories, and rates every requirement 
 
 `Python` · `LangGraph` · `FastAPI` · `PostgreSQL + pgvector` · `NVIDIA Nemotron` · `Mercury Decide` · `Docker`
 
-**Live demo:** not deployed yet. Run it locally (below), or deploy it to AWS Lambda with the Terraform in [`infra/`](infra/).
+**Live demo:** https://f7yxpsphemzbymhpc5uu6qzz4q0oilnj.lambda-url.ap-south-1.on.aws/ (AWS Lambda; the first check after a quiet spell takes a few seconds longer while it starts). How it's deployed: [`infra/`](infra/).
 
 ## How it works
 

@@ -159,6 +159,9 @@ resource "aws_lambda_permission" "url" {
   function_name          = aws_lambda_function.app[0].function_name
   principal              = "*"
   function_url_auth_type = "NONE"
+  # One change to the function's policy at a time: creating the URL edits it too, and a
+  # parallel AddPermission fails with 409 "concurrent update".
+  depends_on = [aws_lambda_function_url.app]
 }
 
 resource "aws_lambda_permission" "url_invoke" {
@@ -168,6 +171,7 @@ resource "aws_lambda_permission" "url_invoke" {
   function_name            = aws_lambda_function.app[0].function_name
   principal                = "*"
   invoked_via_function_url = true
+  depends_on               = [aws_lambda_permission.url]
 }
 
 # ---------------------------------------------------------------- GitHub sync schedule

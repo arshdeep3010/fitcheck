@@ -14,7 +14,7 @@
 > **8 Nov: the app's index is public GitHub + CV only.** Four projects had been indexed from folders on my laptop (Healthdecissionagent, vibe-audit, fitcheck, linkedin-bot: 492 of 664 chunks). None of them is public on GitHub, so the app could mark a skill *met* from code a recruiter can't open. They're removed: the app index now holds only what's public on GitHub, plus the CV. `scripts.ingest` refuses local folders unless `--eval` is given, and the app logs a warning at startup if a local-folder source is ever in its index. To bring a project back, make it public: the sync indexes it within 30 minutes, with permalinks.
 >
 > **Evals use their own index** (`data/eval-index.json`, `EVAL_INDEX_PATH`): the 664-chunk index the labels were written for. Their labels assume those projects (`assumes_indexed` in each case), and `run_evals` refuses to run if one is missing. This index stays on my laptop (`data/` is in `.gitignore` and `.dockerignore`) and is never served. Re-run on it, the development set still gives Nemotron 100% / 0 false claims (`eval-main-20261108-131502.json`).
-> **Not yet done:** pushing to GitHub, deployment. See [§13 Next steps](#13-next-steps-in-order).
+> **Live since 9 Nov 2026:** https://f7yxpsphemzbymhpc5uu6qzz4q0oilnj.lambda-url.ap-south-1.on.aws/ on AWS Lambda (ap-south-1) + Neon (Singapore), code at github.com/arshdeep3010/fitcheck. First live check through the public URL: the report streamed step by step in 13.8 s, 6 of 7 requirements met with AgentOps permalinks, Kubernetes not met. The schedule's first sync indexed agentops, portfolio-website and the CV (215 chunks).
 
 ---
 
@@ -819,7 +819,7 @@ Citations to GitHub repos are commit permalinks, so they never point at the wron
 3. **Evals:** grow the dataset to 30+ JDs (more near misses, one prompt-injection case), save the indexed repos + commits with each run, put the table in the README.
 4. **Similarity floor** on retrieval, measured with the evals before and after.
 5. **GitHub:** push `fitcheck`, `Healthdecissionagent`, `vibe-audit` (public). The sync picks them up within 30 minutes and their rows get links.
-6. **Deploy:** AWS Lambda + Neon, Terraform and GitHub Actions ready (§10, `infra/README.md`); `terraform apply` is run by hand.
+6. ~~**Deploy**~~ ✅ live on AWS Lambda + Neon since 9 Nov (§10).
 7. **Record a 60-second demo:** paste a real JD, click a citation, show an Unverified row and explain why.
 
 ---
