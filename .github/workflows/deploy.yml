@@ -1,0 +1,106 @@
+name: deploy
+
+# After ci passes on main: build the Lambda image, push it to ECR, point the function at it,
+# sync with GitHub once (fills a fresh database right away), then check the live /health.
+# Also runnable by hand (Actions > deploy). Does nothing until the repository variables from
+# `terraform output github_variables` are set, so forks and a fresh clone don't fail here.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # GitHub OIDC token for AWS: no AWS keys stored in GitHub
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_ROLE_ARN != '' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      NAME: ${{ vars.APP_NAME || 'fitcheck' }}
+      # The commit ci tested (workflow_run), or the branch head (manual run).
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Lambda needs a plain single-platform image: no provenance attestations.
+      - name: Build and push the image
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.APP_NAME || 'fitcheck' }}
+        run: |
+          set -euo pipefail
+          docker build --provenance=false --platform linux/amd64 -f lambda.Dockerfile \
+            -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$SHA"
+          docker push "$IMAGE:latest"
+
+      # On the very first run the function doesn't exist yet (create_function = false): the
+      # image is pushed, and Terraform creates the function from it next.
+      - name: Update the function
+        id: update
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.APP_NAME || 'fitcheck' }}
+        run: |
+          set -euo pipefail
+          if ! aws lambda get-function --function-name "$NAME" >/dev/null 2>&1; then
+            echo "::notice::$NAME doesn't exist yet. The image is pushed; apply Terraform with create_function = true."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          aws lambda update-function-code --function-name "$NAME" \
+            --image-uri "$IMAGE:$SHA" --query 'LastUpdateStatus' --output text
+          aws lambda wait function-updated-v2 --function-name "$NAME"
+          echo "$NAME -> $SHA"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+
+      # The schedule syncs every 30 minutes; this does it now, so a new database (or a CV
+      # change shipped in this image) is live straight after the deploy.
+      - name: Sync with GitHub now
+        if: steps.update.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+          token=$(aws ssm get-parameter --name "/$NAME/sync_token" --with-decryption \
+            --query Parameter.Value --output text)
+          echo "::add-mask::$token"
+          payload=$(jq -nc --arg t "$token" '{action: "sync", token: $t}')
+          aws lambda invoke --function-name "$NAME" --cli-binary-format raw-in-base64-out \
+            --cli-read-timeout 320 --payload "$payload" sync.json >/dev/null
+          cat sync.json; echo
+          if ! grep -q '"synced"' sync.json; then
+            echo "::warning::The sync didn't report back. Check the function's logs; are the SSM secrets set?"
+          fi
+
+      - name: Check the live app
+        if: steps.update.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+          url=$(aws lambda get-function-url-config --function-name "$NAME" --query FunctionUrl --output text)
+          for i in 1 2 3 4 5 6; do
+            if body=$(curl -fsS --max-time 30 "${url%/}/health"); then echo "$body"; echo "Live: $url"; exit 0; fi
+            echo "not ready yet ($i)"; sleep 10
+          done
+          echo "::error::$url/health did not answer. Are database_url and nvidia_api_key set in SSM? See infra/README.md."
+          exit 1

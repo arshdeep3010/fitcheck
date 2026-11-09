@@ -1,0 +1,1310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>FitCheck</title>
+<meta name="description" content="Paste a job description. Every requirement is checked against real code, with links to the exact lines.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050505;
+    --surface: rgba(255, 255, 255, 0.025);
+    --surface-2: rgba(255, 255, 255, 0.045);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #fafafa;
+    --muted: #8b8b8b;
+    --dim: #4d4d4d;
+    --faint: #262626;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --radius: 16px;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 15px/1.6 var(--sans); letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+  ::selection { background: #fff; color: #000; }
+  a { color: inherit; }
+  button, textarea { font: inherit; color: inherit; }
+
+  /* ---------- Atmosphere: glow, grid, grain ---------- */
+  .atmosphere { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .atmosphere::before {
+    content: ""; position: absolute; inset: -20% -10% auto; height: 70vh;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(255,255,255,0.075), transparent 70%);
+  }
+  .atmosphere::after {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 72px 72px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 30%, transparent 75%);
+            mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 30%, transparent 75%);
+  }
+  .grain {
+    position: fixed; inset: -50%; z-index: 100; pointer-events: none; opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Nav ---------- */
+  nav { display: flex; align-items: center; justify-content: space-between; height: 72px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 600 15px/1 var(--display); letter-spacing: -0.02em; text-decoration: none; }
+  .mark { width: 22px; height: 22px; perspective: 80px; }
+  .mark i {
+    display: block; width: 100%; height: 100%; border: 1.5px solid var(--text); border-radius: 6px;
+    transform: rotateX(28deg) rotateY(-32deg); transform-style: preserve-3d;
+    box-shadow: inset 0 0 0 4px var(--bg), inset 0 0 0 5.5px rgba(255,255,255,0.35);
+  }
+  .nav-right { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+    color: var(--muted); font-size: 12.5px; white-space: nowrap;
+  }
+  .pill b { color: var(--text); font-weight: 500; }
+  a.pill { text-decoration: none; transition: color 150ms ease, border-color 150ms ease; }
+  @media (hover: hover) and (pointer: fine) { a.pill:hover { color: var(--text); border-color: var(--border-strong); } }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+
+  /* ---------- Hero ---------- */
+  .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 24px; align-items: center; padding: 48px 0 8px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; color: var(--muted);
+    font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--dim); }
+  h1 {
+    margin: 20px 0 18px; font: 600 clamp(40px, 6.4vw, 72px)/0.98 var(--display); letter-spacing: -0.045em;
+  }
+  h1 .soft { color: var(--dim); }
+  .lede { max-width: 470px; margin: 0; color: var(--muted); font-size: 16.5px; line-height: 1.6; }
+  .lede b { color: var(--text); font-weight: 500; }
+
+  .stage { position: relative; aspect-ratio: 1 / 1; max-height: 460px; width: 100%; justify-self: center; }
+  #sphere { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage-label {
+    position: absolute; font: 500 11px/1 var(--mono); color: var(--muted); letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px;
+    background: rgba(5,5,5,0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transition: opacity 300ms ease, transform 300ms var(--ease-out);
+  }
+  .stage-label.l1 { top: 18%; left: 2%; }
+  .stage-label.l2 { bottom: 20%; right: 0; }
+  .stage-label.l3 { top: 8%; right: 12%; }
+  body.busy .stage-label { opacity: 0.35; transform: translateY(2px); }
+
+  /* ---------- Composer ---------- */
+  .composer {
+    margin-top: 36px; position: relative; border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 30px 80px -40px rgba(0,0,0,0.9);
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .composer:focus-within { border-color: var(--border-strong); box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 4px rgba(255,255,255,0.04), 0 30px 80px -40px rgba(0,0,0,0.9); }
+  textarea {
+    display: block; width: 100%; min-height: 168px; max-height: 420px; resize: vertical; border: 0; outline: 0;
+    padding: 20px 22px 8px; background: transparent; font-size: 15px; line-height: 1.65;
+  }
+  textarea::placeholder { color: var(--dim); }
+  .composer-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 12px 12px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .samples { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-right: auto; }
+  .samples span { color: var(--dim); font-size: 12.5px; margin-right: 2px; }
+  .chip {
+    height: 28px; padding: 0 11px; border: 1px solid var(--border); border-radius: 999px; background: transparent;
+    color: var(--muted); font-size: 12.5px; cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease, transform 160ms var(--ease-out);
+  }
+  .chip:active { transform: scale(0.97); }
+  .count { color: var(--dim); font: 12px var(--mono); min-width: 64px; text-align: right; }
+  .btn {
+    position: relative; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px 0 18px;
+    border: 0; border-radius: 12px; background: var(--text); color: #000; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: transform 160ms var(--ease-out), opacity 200ms ease;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.4), 0 10px 30px -10px rgba(255,255,255,0.35);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.55; cursor: progress; }
+  .kbd { font: 500 11px var(--mono); padding: 3px 6px; border-radius: 6px; background: rgba(0,0,0,0.08); color: rgba(0,0,0,0.6); }
+  .privacy { margin: 12px 4px 0; color: var(--dim); font-size: 12.5px; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chip:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
+  }
+
+  /* ---------- Sections ---------- */
+  section.block { margin-top: 56px; }
+  .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .block-title { font: 600 13px/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; }
+  .block-meta { color: var(--dim); font: 12px var(--mono); }
+  [hidden] { display: none !important; }
+  .reveal { opacity: 1; transform: none; transition: opacity 400ms ease, transform 500ms var(--ease-out), filter 400ms ease; }
+  .reveal.pre { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+
+  /* ---------- Live steps ---------- */
+  .live-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 16px; align-items: stretch; }
+  .steps-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding-bottom: 14px; }
+  .steps { position: relative; list-style: none; margin: 0; padding: 8px 22px; }
+  .step-tech { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .step-tech span {
+    padding: 2px 7px; border: 1px solid var(--faint); border-radius: 6px; color: var(--dim);
+    font: 500 10.5px/1.5 var(--mono); letter-spacing: 0.02em;
+    transition: color 250ms ease, border-color 250ms ease, background-color 250ms ease;
+  }
+  .step[data-state="active"] .step-tech span { color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
+  .step[data-state="done"] .step-tech span { color: var(--muted); border-color: var(--border); }
+
+  /* ---------- 3D tech orbit ---------- */
+  .orbit {
+    position: relative; min-height: 420px; overflow: hidden; perspective: 900px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: radial-gradient(70% 60% at 50% 52%, rgba(255,255,255,0.06), transparent 70%), var(--surface);
+  }
+  .floor {
+    position: absolute; left: 50%; top: 56%; width: 160%; height: 160%; pointer-events: none;
+    transform: translate(-50%, -50%) rotateX(74deg);
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.07) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.07) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 10%, transparent 55%);
+            mask-image: radial-gradient(circle at 50% 50%, #000 10%, transparent 55%);
+    animation: floorDrift 14s linear infinite;
+  }
+  @keyframes floorDrift { to { background-position: 0 48px, 48px 0; } }
+  .links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .links line { stroke: rgba(255,255,255,0.07); stroke-width: 1; transition: stroke 300ms ease; }
+  .links line.on { stroke: rgba(255,255,255,0.55); stroke-dasharray: 2 6; animation: flow 0.7s linear infinite; }
+  .links line.done { stroke: rgba(255,255,255,0.16); }
+  @keyframes flow { to { stroke-dashoffset: -16; } }
+
+  .tile {
+    position: absolute; left: 0; top: 0; min-width: 132px; padding: 9px 12px 10px;
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    background: rgba(14, 14, 14, 0.88); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    will-change: transform, opacity; transform-origin: center;
+    transition: background-color 280ms ease, color 280ms ease, border-color 280ms ease, box-shadow 320ms ease;
+  }
+  .t-by { color: var(--muted); font: 500 10px/1.4 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+  .t-name { margin-top: 2px; font: 600 13.5px/1.25 var(--display); letter-spacing: -0.01em; white-space: nowrap; }
+  .t-role { margin-top: 2px; color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+  .tile.on {
+    background: #fafafa; color: #000; border-color: #fff;
+    box-shadow: 0 0 0 6px rgba(255,255,255,0.06), 0 22px 60px -12px rgba(255,255,255,0.4);
+  }
+  .tile.on .t-by, .tile.on .t-role { color: rgba(0,0,0,0.55); }
+  .tile.done::after {
+    content: ""; position: absolute; top: -7px; right: -7px; width: 17px; height: 17px; border-radius: 50%;
+    background: #fafafa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.2 8.3l2.4 2.4 5-5.2' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 13px no-repeat;
+    box-shadow: 0 0 0 3px var(--bg);
+  }
+  .tile.on.done::after { box-shadow: 0 0 0 3px #fafafa, 0 0 0 4px #000; }
+  .tile.hub { min-width: 150px; text-align: center; border-style: solid; background: rgba(255,255,255,0.07); }
+  .tile.hub .t-name { font-size: 16px; }
+  .tile.hub::before {
+    content: ""; position: absolute; inset: -1px; border-radius: inherit; border: 1px solid rgba(255,255,255,0.5);
+    opacity: 0; pointer-events: none;
+  }
+  body.busy .tile.hub::before { animation: hubPulse 1.8s var(--ease-out) infinite; }
+  @keyframes hubPulse { 0% { opacity: 0.6; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+  .packet {
+    position: absolute; left: 0; top: 0; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 10px 2px rgba(255,255,255,0.7); opacity: 0; pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .orbit-caption {
+    position: absolute; left: 16px; right: 16px; bottom: 14px; display: flex; align-items: center; gap: 8px;
+    color: var(--muted); font: 500 11.5px/1.4 var(--mono); letter-spacing: 0.02em;
+  }
+  .orbit-caption::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
+  body.busy .orbit-caption::before { background: var(--text); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
+  .orbit-caption b { color: var(--text); font-weight: 500; }
+  .step { position: relative; display: grid; grid-template-columns: 28px 1fr auto; gap: 14px; align-items: center; padding: 14px 0; }
+  .step + .step { border-top: 1px solid rgba(255,255,255,0.045); }
+  .step-icon { position: relative; width: 22px; height: 22px; }
+  .step-icon svg { position: absolute; inset: 0; width: 22px; height: 22px; overflow: visible; }
+  .ring-track { fill: none; stroke: var(--faint); stroke-width: 1.5; }
+  .ring-spin { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 18 100; opacity: 0;
+               transform-origin: 11px 11px; transition: opacity 200ms ease; }
+  .ring-fill { fill: var(--text); transform-origin: 11px 11px; transform: scale(0.6); opacity: 0;
+               transition: transform 360ms var(--ease-out), opacity 200ms ease; }
+  .tick { fill: none; stroke: #000; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+          stroke-dasharray: 14; stroke-dashoffset: 14; transition: stroke-dashoffset 320ms var(--ease-out) 120ms; }
+  .dash { stroke: var(--dim); stroke-width: 1.5; stroke-linecap: round; opacity: 0; transition: opacity 200ms ease; }
+  .step-text { min-width: 0; }
+  .step-label { color: var(--dim); font-weight: 500; transition: color 250ms ease; }
+  .step-detail { color: var(--dim); font-size: 13px; min-height: 0; transition: color 250ms ease; }
+  .step-ms { color: var(--dim); font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+
+  .step[data-state="active"] .ring-spin { opacity: 1; animation: spin 0.9s linear infinite; }
+  .step[data-state="active"] .step-label { color: var(--text); }
+  .step[data-state="active"] .step-detail { color: var(--muted); }
+  .step[data-state="done"] .ring-fill { opacity: 1; transform: scale(1); }
+  .step[data-state="done"] .ring-track { stroke: transparent; }
+  .step[data-state="done"] .tick { stroke-dashoffset: 0; }
+  .step[data-state="done"] .step-label { color: var(--text); }
+  .step[data-state="done"] .step-detail, .step[data-state="done"] .step-ms { color: var(--muted); }
+  .step[data-state="skipped"] .dash { opacity: 1; }
+  .step[data-state="skipped"] .step-label { color: var(--dim); text-decoration: line-through; text-decoration-color: var(--faint); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .progress { height: 1px; margin: 4px 22px 0; background: var(--faint); overflow: hidden; border-radius: 1px; }
+  .progress i { display: block; height: 100%; background: var(--text); transform-origin: left; transform: scaleX(0);
+                transition: transform 500ms var(--ease-out); }
+
+  /* ---------- Scores ---------- */
+  .scoreboard {
+    display: grid; grid-template-columns: auto auto 1fr; gap: 36px; align-items: center; padding: 28px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,0.05), transparent 55%), var(--surface);
+  }
+  .gauge { position: relative; width: 148px; height: 148px; }
+  .gauge.small { width: 112px; height: 112px; }
+  .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge .track { fill: none; stroke: var(--faint); stroke-width: 6; }
+  .gauge .value { fill: none; stroke: var(--text); stroke-width: 6; stroke-linecap: round; }
+  .gauge.small .value { stroke: var(--muted); }
+  .gauge-num { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .gauge-num b { font: 600 38px/1 var(--display); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .gauge.small .gauge-num b { font-size: 28px; color: var(--muted); }
+  .gauge-num small { display: block; margin-top: 6px; color: var(--muted); font-size: 11.5px; }
+  .summary h2 { margin: 0 0 8px; font: 600 22px/1.25 var(--display); letter-spacing: -0.025em; }
+  .summary p { margin: 0; color: var(--muted); }
+  .tally { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+  .tally span { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border: 1px solid var(--border);
+                border-radius: 999px; color: var(--muted); font-size: 12.5px; }
+  .tally b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .warnings { margin-top: 14px; color: var(--text); font-size: 13px; }
+  .warnings div { display: flex; gap: 8px; align-items: baseline; }
+  .warnings div::before { content: "!"; display: inline-grid; place-content: center; flex: none; width: 16px; height: 16px; border: 1px solid var(--border-strong); border-radius: 50%; font: 600 10px var(--mono); }
+
+  /* ---------- Requirement groups ---------- */
+  .group { margin-top: 28px; }
+  .group-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .group-head b { color: var(--text); font-weight: 600; }
+  .group-head::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .rows { display: grid; gap: 8px; perspective: 1200px; }
+  /* Let long file paths shrink (they ellipsize) instead of widening the page on phones. */
+  .rows > .row, .row-main > div { min-width: 0; }
+
+  .row {
+    --mx: 50%; --my: 50%;
+    position: relative; border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+    transform-style: preserve-3d; transition: transform 300ms var(--ease-out), border-color 200ms ease, background-color 200ms ease;
+    opacity: 0; transform: translateY(8px);
+    animation: rowIn 420ms var(--ease-out) forwards;
+  }
+  .row::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: radial-gradient(260px circle at var(--mx) var(--my), rgba(255,255,255,0.07), transparent 70%);
+    transition: opacity 250ms ease;
+  }
+  @keyframes rowIn { to { opacity: 1; transform: translateY(0); } }
+  @media (hover: hover) and (pointer: fine) {
+    .row:hover { border-color: var(--border-strong); }
+    .row:hover::before { opacity: 1; }
+  }
+
+  .row-main { display: grid; grid-template-columns: 34px 1fr auto; gap: 14px; align-items: center; width: 100%;
+              padding: 14px 16px; border: 0; background: none; text-align: left; cursor: default; }
+  .row.has-proof .row-main { cursor: pointer; }
+  .glyph { width: 30px; height: 30px; border-radius: 9px; display: grid; place-content: center; font: 600 11px var(--mono); }
+  .glyph svg { width: 15px; height: 15px; }
+  .v-met .glyph { background: var(--text); color: #000; }
+  .v-partial .glyph { background: linear-gradient(90deg, var(--text) 50%, transparent 50%); border: 1px solid var(--text); color: #000; }
+  .v-self_reported .glyph { border: 1px dashed var(--muted); color: var(--text); }
+  .v-not_met .glyph { border: 1px solid var(--border-strong); color: var(--muted); }
+  .v-unverified .glyph { border: 1px dashed var(--dim); color: var(--dim); }
+  .v-not_checkable .glyph { border: 1px solid var(--faint); color: var(--dim); }
+
+  .req { font-weight: 500; line-height: 1.4; }
+  .v-not_met .req, .v-unverified .req, .v-not_checkable .req { color: #c9c9c9; }
+  .req-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 3px; color: var(--dim); font-size: 12.5px; }
+  .tag { padding: 1px 7px; border: 1px solid var(--border); border-radius: 6px; font: 500 10.5px/1.5 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .src { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+  /* Source badges: code is proof, the CV is a claim. Never styled alike. */
+  .srcbadge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 6px;
+              font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; flex: none; }
+  .srcbadge svg { width: 11px; height: 11px; }
+  .srcbadge.k-github { background: var(--text); color: #000; }
+  .srcbadge.k-code { border: 1px solid var(--border-strong); color: var(--text); }
+  .srcbadge.k-cv { border: 1px dashed var(--muted); color: var(--muted); font-weight: 500; }
+  .group.cv-group { padding: 16px; border: 1px dashed var(--border-strong); border-radius: 18px;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,0.02) 0 8px, transparent 8px 16px); }
+  .cv-banner { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .cv-banner b { color: var(--text); font-weight: 500; }
+  .cv-group .row { border-style: dashed; background: rgba(5,5,5,0.7); }
+  .cv-group .v-self_reported .verdict { color: var(--muted); font-style: italic; }
+  .proof-kind { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+  .proof-kind.k-cv { border-bottom-style: dashed; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; color: var(--dim); font-size: 12.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+
+  .row-side { display: flex; align-items: center; gap: 14px; }
+  .verdict { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .v-met .verdict { color: var(--text); }
+  .conf { width: 54px; height: 3px; border-radius: 3px; background: var(--faint); overflow: hidden; }
+  .conf i { display: block; height: 100%; background: var(--muted); transform-origin: left; }
+  .chev { width: 16px; height: 16px; color: var(--dim); transition: transform 250ms var(--ease-out), color 150ms ease; }
+  .row.open .chev { transform: rotate(180deg); color: var(--text); }
+
+  .proof { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms var(--ease-out); }
+  .row.open .proof { grid-template-rows: 1fr; }
+  .proof > div { overflow: hidden; }
+  .proof-inner { margin: 0 16px 16px 64px; border: 1px solid var(--border); border-radius: 10px; background: #0a0a0a; }
+  .proof-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .proof-head .src { color: var(--text); }
+  .proof-head a { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; text-decoration: none; transition: color 150ms ease; }
+  .proof-head a:hover { color: var(--text); }
+  .note { padding: 9px 12px 0; color: var(--muted); font-size: 12.5px; }
+  pre { margin: 0; padding: 10px 0 12px; overflow-x: auto; font: 12.5px/1.65 var(--mono); color: #d4d4d4; }
+  pre .ln { display: inline-block; width: 44px; padding-right: 14px; text-align: right; color: var(--dim); user-select: none; }
+  pre .cv { padding: 0 14px; white-space: pre-wrap; color: #d4d4d4; font-family: var(--sans); font-size: 13.5px; }
+
+  /* ---------- Footer, toast ---------- */
+  footer { margin: 80px 0 40px; padding-top: 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--dim); font-size: 12.5px; }
+  footer .models { font-family: var(--mono); }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 50; max-width: calc(100vw - 32px); padding: 12px 16px;
+    border: 1px solid var(--border-strong); border-radius: 12px; background: #111; color: var(--text); font-size: 14px;
+    box-shadow: 0 20px 60px -20px #000; transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
+    transition: transform 300ms var(--ease-out), opacity 200ms ease;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+  textarea:focus-visible { outline: none; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 880px) {
+    .live-grid { grid-template-columns: 1fr; }
+    .orbit { order: -1; min-height: 330px; }
+    .hero { grid-template-columns: 1fr; padding-top: 20px; }
+    .stage { order: -1; max-height: 300px; max-width: 300px; }
+    .scoreboard { grid-template-columns: auto auto; }
+    .summary { grid-column: 1 / -1; }
+    .nav-right .pill.optional { display: none; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 16px; }
+    .composer-bar { padding-left: 14px; }
+    .samples { width: 100%; }
+    .btn { margin-left: auto; }
+    .scoreboard { padding: 20px; gap: 18px; justify-items: center; }
+    .gauge { width: 124px; height: 124px; }
+    .gauge.small { width: 96px; height: 96px; }
+    .row-main { grid-template-columns: 30px 1fr; padding: 12px; }
+    .row-side { grid-column: 2; justify-content: flex-start; }
+    .proof-inner { margin: 0 12px 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+    .reveal.pre { transform: none; filter: none; }
+    .row { transform: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="atmosphere" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="wrap">
+  <nav>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"><i></i></span>FitCheck</a>
+    <div class="nav-right">
+      <a class="pill nav-how" href="/how-it-works">How it works</a>
+      <span class="pill optional" id="index-pill"><span class="live-dot" aria-hidden="true"></span><span>Indexing…</span></span>
+      <span class="pill">Candidate <b id="candidate">—</b></span>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Evidence, not adjectives</div>
+      <h1>Paste a job.<br><span class="soft">See the proof.</span></h1>
+      <p class="lede">FitCheck reads the role, searches <b id="candidate-inline">the candidate</b>'s real code, and marks every requirement
+        <b>Met</b>, <b>Partly met</b> or <b>Not met</b>. Each claim links to the exact lines that prove it.</p>
+    </div>
+    <div class="stage" aria-hidden="true">
+      <canvas id="sphere"></canvas>
+      <span class="stage-label l1">code</span>
+      <span class="stage-label l3">github</span>
+      <span class="stage-label l2">cv</span>
+    </div>
+  </header>
+
+  <form class="composer" id="form" autocomplete="off">
+    <label for="jd" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Job description</label>
+    <textarea id="jd" spellcheck="false" placeholder="Paste the full job description here…"></textarea>
+    <div class="composer-bar">
+      <div class="samples"><span>Try</span>
+        <button type="button" class="chip" data-sample="genai">GenAI Engineer</button>
+        <button type="button" class="chip" data-sample="java">Java Backend</button>
+        <button type="button" class="chip" data-sample="mobile">Mobile</button>
+      </div>
+      <span class="count" id="count">0 chars</span>
+      <button class="btn" id="go" type="submit"><span id="go-label">Check fit</span><span class="kbd" id="kbd">Ctrl ↵</span></button>
+    </div>
+  </form>
+  <p class="privacy">Nothing you paste is stored.</p>
+
+  <section class="block reveal pre" id="live" hidden aria-live="polite">
+    <div class="block-head"><span class="block-title">Live</span><span class="block-meta" id="elapsed">0.0s</span></div>
+    <div class="live-grid">
+      <div class="steps-card">
+        <ol class="steps" id="steps"></ol>
+        <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      </div>
+      <div class="orbit" id="orbit" aria-hidden="true">
+        <div class="floor"></div>
+        <svg class="links" id="links"></svg>
+        <div class="orbit-caption" id="orbit-caption"><span>Waiting for a job description</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block reveal pre" id="results" hidden>
+    <div class="block-head"><span class="block-title">Report</span><span class="block-meta" id="report-meta"></span></div>
+    <div class="scoreboard">
+      <div class="gauge" id="g-code"></div>
+      <div class="gauge small" id="g-cv"></div>
+      <div class="summary">
+        <h2 id="headline"></h2>
+        <p id="summary"></p>
+        <div class="tally" id="tally"></div>
+        <div class="legend" id="legend" hidden></div>
+        <div class="warnings" id="warnings"></div>
+      </div>
+    </div>
+    <div id="groups"></div>
+  </section>
+
+  <footer>
+    <span>Every “Met” is backed by code you can open. CV claims are labelled as claims.</span>
+    <span class="models" id="models"></span>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* =========================================================================
+   Data
+   ========================================================================= */
+const STEPS = [
+  { node: "parse_jd", label: "Reading the job description" },
+  { node: "retrieve", label: "Searching the code" },
+  { node: "score",    label: "Judging each requirement" },
+  { node: "ground",   label: "Applying grounding rules" },
+  { node: "check_cv", label: "Checking the CV for the rest" },
+  { node: "report",   label: "Writing the report" },
+];
+
+/* The real stack behind each step. Names are filled in from /health, so the UI always
+   shows what the server is actually configured to use (e.g. Mercury Decide vs Nemotron). */
+const TECH = {
+  api:    { name: "FastAPI",          by: "Python · SSE",   role: "request in, steps out" },
+  parser: { name: "LLM parser",       by: "chat model",     role: "reads the job" },
+  embed:  { name: "Embeddings",       by: "vectors",        role: "meaning → numbers" },
+  store:  { name: "Vector index",     by: "cosine search",  role: "finds similar code" },
+  scorer: { name: "Fit scorer",       by: "judge",          role: "met / partial / not met" },
+  rules:  { name: "Grounding rules",  by: "Python",         role: "code decides" },
+  cv:     { name: "CV profile",       by: "self-reported",  role: "claims, not proof" },
+};
+const HUB = { name: "LangGraph", by: "orchestrator", role: "StateGraph · 6 nodes" };
+const STEP_TECH = {
+  parse_jd: ["parser"],
+  retrieve: ["embed", "store"],
+  score:    ["scorer"],
+  ground:   ["rules"],
+  check_cv: ["cv", "embed", "scorer"],
+  report:   ["api"],
+};
+
+const MODEL_NAMES = {
+  "nemotron-3-ultra-550b-a55b": "Nemotron 3 Ultra",
+  "nemotron-3-super-120b-a12b": "Nemotron 3 Super",
+  "nemotron-3-embed-1b": "Nemotron Embed 1B",
+  "nemotron-3.5-embed-1b": "Nemotron 3.5 Embed",
+  "mercury-decide": "Mercury Decide",
+  "jev-1.13": "Jev 1.13",
+  "jev-latest": "Jev",
+};
+const VENDORS = { nvidia: "NVIDIA", inception: "Inception", typesafe: "TypeSafe", openai: "OpenAI" };
+function prettyModel(id) {
+  if (!id) return null;
+  const raw = id.replace(/^llm-json:/, "");
+  const [vendor, model] = raw.includes("/") ? raw.split("/", 2) : ["", raw];
+  const key = model.replace(/:free$/, "");
+  if (key === "hash-embedder") return { name: "Hash embedder", by: "offline" };
+  if (key === "keyword-baseline") return { name: "Keyword scorer", by: "offline" };
+  if (key === "heuristic") return { name: "Rule-based parser", by: "offline" };
+  return { name: MODEL_NAMES[key] || key, by: VENDORS[vendor] || vendor || "model" };
+}
+function applyStack(health) {
+  const m = health.models || {};
+  const parser = prettyModel(m.parser), embed = prettyModel(m.embeddings), scorer = prettyModel(m.scorer);
+  if (parser) Object.assign(TECH.parser, parser, { by: `${parser.by} · parser` });
+  if (embed) Object.assign(TECH.embed, embed);
+  if (scorer) Object.assign(TECH.scorer, scorer, { by: `${scorer.by} · judge` }, {
+    role: (m.scorer || "").startsWith("llm-json:") ? "LLM judge · strict JSON" : "decision model · calibrated",
+  });
+  const pg = (health.stack || {}).store === "pgvector";
+  Object.assign(TECH.store, pg ? { name: "pgvector", by: "PostgreSQL · HNSW" } : { name: "Vector index", by: "in-memory · cosine" });
+  Orbit.build();
+}
+
+const VERDICT = {
+  met:           { label: "Met",           group: "proven" },
+  partial:       { label: "Partly met",    group: "proven" },
+  self_reported: { label: "Stated on CV",  group: "cv" },
+  not_met:       { label: "Not met",       group: "gaps" },
+  unverified:    { label: "Unverified",    group: "unsure" },
+  not_checkable: { label: "Not checkable", group: "unsure" },
+};
+const GROUPS = [
+  { key: "proven", title: "Proven in code",  hint: "linked to the exact lines" },
+  { key: "cv",     title: "Stated on CV",    hint: "a claim, not proof" },
+  { key: "gaps",   title: "Gaps",            hint: "no evidence found" },
+  { key: "unsure", title: "Not decided",     hint: "low confidence or not provable from code" },
+];
+
+const SAMPLES = {
+  genai: `GenAI Engineer — Series B startup, Bengaluru (hybrid)
+
+What you'll do
+- Build retrieval-augmented generation (RAG) pipelines over internal documents
+- Orchestrate multi-step agents with LangGraph
+- Ship LLM features behind FastAPI services
+- Set up evaluation datasets to track quality, latency and cost
+
+What we're looking for
+- Strong Python
+- Hands-on experience with vector databases (pgvector, Pinecone)
+- Docker and CI/CD
+- Fine-tuning open-source LLMs is a plus
+- B.Tech in Computer Science or equivalent`,
+  java: `Software Engineer II — Backend (Java), Gurugram
+
+Responsibilities
+* Build RESTful services using Java 17+ and Spring Boot
+* Design PostgreSQL schemas and manage migrations with Flyway or Liquibase
+* Secure APIs using Spring Security, OAuth2 and JWT
+* Write unit and integration tests (JUnit, Mockito, Testcontainers)
+* Produce events to Apache Kafka for downstream services
+
+Requirements
+* 3+ years of professional software experience
+* Exposure to Prometheus and Grafana is a plus`,
+  mobile: `Senior Mobile Engineer (React Native) — remote
+
+Must have
+- 5+ years building mobile apps with React Native
+- Native modules in Swift or Kotlin
+- GraphQL with Apollo Client
+- Shipping apps to the App Store and Play Store
+Nice to have
+- Animation libraries like Reanimated`,
+};
+
+/* =========================================================================
+   Tiny DOM helpers (API text always goes through textContent)
+   ========================================================================= */
+const $ = (sel) => document.querySelector(sel);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(markup, viewBox = "0 0 24 24") {
+  const s = document.createElementNS(SVG_NS, "svg");
+  s.setAttribute("viewBox", viewBox); s.setAttribute("aria-hidden", "true");
+  s.innerHTML = markup; // static, trusted markup only
+  return s;
+}
+const ICON = {
+  met: '<path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+  not_met: '<path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  unverified: '<path d="M9.2 9a2.9 2.9 0 1 1 4 2.7c-.8.4-1.2 1-1.2 1.8v.5M12 17.2v.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  not_checkable: '<path d="M7 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  chev: '<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  ext: '<path d="M7 17L17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  code: '<path d="M9 7l-5 5 5 5M15 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  doc: '<path d="M7 3h7l4 4v14H7zM10 12h5M10 16h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>',
+};
+
+/* Where evidence came from. Code is proof; the CV is a claim and is always labelled as one. */
+const KIND = {
+  github: { label: "GitHub", icon: "code", long: "Proof · code in a public GitHub repo" },
+  code:   { label: "Code",   icon: "code", long: "Proof · code from a local copy (not on GitHub yet)" },
+  cv:     { label: "CV claim", icon: "doc", long: "Claim · text from the CV, not verified by code" },
+};
+function citationKind(c) { return c ? (c.kind || "code") : null; }
+function sourceBadge(kind) {
+  const k = KIND[kind] || KIND.code;
+  const b = el("span", `srcbadge k-${kind}`);
+  b.append(svg(ICON[k.icon]), document.createTextNode(k.label));
+  b.title = k.long;
+  return b;
+}
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+$("#kbd").textContent = isMac ? "⌘ ↵" : "Ctrl ↵";
+
+/* =========================================================================
+   3D point sphere (canvas 2D, no libraries)
+   - Fibonacci sphere, perspective projection, depth-shaded points
+   - Orbit rings, cursor-follow with spring smoothing
+   - Spins faster and "breathes" while a check is running; pulses when done
+   ========================================================================= */
+const Sphere = (() => {
+  const canvas = $("#sphere");
+  const ctx = canvas.getContext("2d");
+  const N = 900;
+  const pts = [];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const th = golden * i;
+    pts.push([Math.cos(th) * r, y, Math.sin(th) * r, Math.random()]);
+  }
+  let w = 0, h = 0, dpr = 1, running = true, visible = true;
+  let rotY = 0, rotX = -0.35, tiltX = 0, tiltY = 0, targetX = 0, targetY = 0, velX = 0, velY = 0;
+  let speed = 1, targetSpeed = 1, energy = 0, targetEnergy = 0, pulse = 0, t = 0, last = performance.now();
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = rect.width; h = rect.height;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (reduceMotion) draw(0);
+  }
+
+  function project(x, y, z, R, cx, cy) {
+    // rotate around Y, then X (plus cursor tilt)
+    const ay = rotY + tiltY, ax = rotX + tiltX;
+    const cY = Math.cos(ay), sY = Math.sin(ay), cX = Math.cos(ax), sX = Math.sin(ax);
+    let x1 = x * cY - z * sY, z1 = x * sY + z * cY;
+    let y1 = y * cX - z1 * sX, z2 = y * sX + z1 * cX;
+    const persp = 2.6 / (2.6 + z2);
+    return [cx + x1 * R * persp, cy + y1 * R * persp, z2, persp];
+  }
+
+  function ring(R, cx, cy, tilt, phase, alpha) {
+    ctx.beginPath();
+    for (let i = 0; i <= 96; i++) {
+      const a = (i / 96) * Math.PI * 2 + phase;
+      const x = Math.cos(a) * 1.28, z = Math.sin(a) * 1.28;
+      const y = z * Math.sin(tilt), zz = z * Math.cos(tilt);
+      const [px, py] = project(x, y, zz, R, cx, cy);
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function draw(dt) {
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    const base = Math.min(w, h) * 0.34;
+    const R = base * (1 + pulse * 0.08);
+
+    // soft core glow
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
+    g.addColorStop(0, `rgba(255,255,255,${0.06 + energy * 0.05})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+
+    ring(R, cx, cy, 1.15, t * 0.15, 0.07 + energy * 0.06);
+    ring(R, cx, cy, -0.55, -t * 0.1, 0.05 + energy * 0.04);
+
+    for (let i = 0; i < N; i++) {
+      const p = pts[i];
+      const wobble = 1 + energy * 0.06 * Math.sin(t * 3 + p[3] * 12);
+      const [px, py, z, persp] = project(p[0] * wobble, p[1] * wobble, p[2] * wobble, R, cx, cy);
+      const depth = (1 - z) / 2;               // 0 back .. 1 front
+      const a = 0.08 + depth * depth * 0.85;
+      const size = (0.5 + depth * 1.3) * persp;
+      ctx.fillStyle = `rgba(255,255,255,${a})`;
+      ctx.fillRect(px - size / 2, py - size / 2, size, size);
+    }
+  }
+
+  function frame(now) {
+    if (!running) return;
+    const dt = Math.min((now - last) / 1000, 0.05); last = now; t += dt;
+    // spring toward cursor tilt (decorative, so a spring feels alive)
+    const k = 30, d = 9;
+    velX += ((targetX - tiltX) * k - velX * d) * dt; tiltX += velX * dt;
+    velY += ((targetY - tiltY) * k - velY * d) * dt; tiltY += velY * dt;
+    speed += (targetSpeed - speed) * Math.min(1, dt * 3);
+    energy += (targetEnergy - energy) * Math.min(1, dt * 2.5);
+    pulse *= Math.pow(0.04, dt);
+    rotY += dt * 0.18 * speed;
+    if (visible) draw(dt);
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("pointermove", (e) => {
+    const nx = e.clientX / window.innerWidth - 0.5, ny = e.clientY / window.innerHeight - 0.5;
+    targetY = nx * 0.6; targetX = ny * 0.4;
+  }, { passive: true });
+  new ResizeObserver(resize).observe(canvas);
+  new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; }).observe(canvas);
+  document.addEventListener("visibilitychange", () => {
+    running = !document.hidden && !reduceMotion;
+    if (running) { last = performance.now(); requestAnimationFrame(frame); }
+  });
+
+  resize();
+  if (reduceMotion) { running = false; draw(0); } else requestAnimationFrame(frame);
+
+  return {
+    busy(on) { targetSpeed = on ? 5 : 1; targetEnergy = on ? 1 : 0; },
+    pulse() { pulse = 1; },
+  };
+})();
+
+/* =========================================================================
+   3D tech orbit
+   - LangGraph sits in the middle; each tool orbits it on a tilted ellipse
+   - Depth sets scale, opacity and stacking, so it reads as real 3D
+   - When a step starts, the orbit springs round to bring that tool to the front,
+     lights it up and sends data packets along its link to LangGraph
+   ========================================================================= */
+const Orbit = (() => {
+  const stage = $("#orbit"), links = $("#links"), caption = $("#orbit-caption");
+  const TAU = Math.PI * 2, FRONT = Math.PI / 2;
+  let tiles = [], hub = null, packets = [];
+  let angle = 0, vel = 0, target = null, active = [], loop = false, visible = true, last = 0, t = 0;
+
+  const wrap = (a) => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+
+  function tileNode(def, extra = "") {
+    const n = el("div", `tile ${extra}`.trim());
+    n.append(el("div", "t-by", def.by), el("div", "t-name", def.name), el("div", "t-role", def.role));
+    return n;
+  }
+
+  function build() {
+    stage.querySelectorAll(".tile, .packet").forEach((n) => n.remove());
+    links.replaceChildren();
+    const keys = Object.keys(TECH);
+    tiles = keys.map((key, i) => {
+      const node = tileNode(TECH[key]);
+      const line = document.createElementNS(SVG_NS, "line");
+      links.append(line); stage.append(node);
+      return { key, node, line, phase: (i / keys.length) * TAU, on: false, done: false };
+    });
+    hub = { node: tileNode(HUB, "hub") };
+    stage.append(hub.node);
+    packets = Array.from({ length: 8 }, () => { const p = el("div", "packet"); stage.append(p); return p; });
+    measure(); render();
+  }
+
+  function measure() {
+    for (const tl of tiles) { tl.w = tl.node.offsetWidth; tl.h = tl.node.offsetHeight; }
+    if (hub) { hub.w = hub.node.offsetWidth; hub.h = hub.node.offsetHeight; }
+  }
+
+  function render() {
+    if (!hub) return;
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const cx = W / 2, cy = H * 0.43;
+    const rx = Math.min(W * 0.35, 260), ry = Math.min(H * 0.31, 132);
+    links.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    hub.node.style.transform = `translate(${cx - hub.w / 2}px, ${cy - hub.h / 2}px)`;
+    hub.node.style.zIndex = 50;
+
+    for (const tl of tiles) {
+      const phi = tl.phase + angle;
+      const depth = (Math.sin(phi) + 1) / 2;                 // 0 = back, 1 = front
+      const x = cx + rx * Math.cos(phi), y = cy + ry * Math.sin(phi);
+      const scale = 0.66 + 0.34 * depth + (tl.on ? 0.06 : 0);
+      tl.x = x; tl.y = y;
+      tl.node.style.transform = `translate(${x - tl.w / 2}px, ${y - tl.h / 2 - (tl.on ? 10 : 0)}px) scale(${scale})`;
+      tl.node.style.opacity = tl.on ? 1 : (0.28 + 0.72 * depth).toFixed(3);
+      tl.node.style.zIndex = Math.round(depth * 100);
+      tl.line.setAttribute("x1", cx); tl.line.setAttribute("y1", cy);
+      tl.line.setAttribute("x2", x); tl.line.setAttribute("y2", y);
+    }
+
+    // Data packets: out to each active tool and back, staggered.
+    const live = tiles.filter((tl) => tl.on);
+    packets.forEach((p, i) => {
+      const tl = live[i % Math.max(live.length, 1)];
+      if (!tl || reduceMotion || i >= live.length * 2) { p.style.opacity = 0; return; }
+      const outbound = i < live.length;
+      let k = (t * 0.85 + i * 0.37) % 1;
+      if (!outbound) k = 1 - k;
+      const x = cx + (tl.x - cx) * k, y = cy + (tl.y - cy) * k;
+      p.style.transform = `translate(${x}px, ${y}px)`;
+      p.style.opacity = Math.sin(k * Math.PI).toFixed(3);
+    });
+  }
+
+  function frame(now) {
+    if (!loop) return;
+    const dt = Math.min((now - last) / 1000, 0.05); last = now; t += dt;
+    if (target !== null && !reduceMotion) {
+      // Spring toward the active tool (stiff, well damped: decisive, no wobble).
+      const diff = wrap(target - angle);
+      vel += (diff * 14 - vel * 7.5) * dt;
+      angle += vel * dt;
+    } else if (!reduceMotion) {
+      vel *= Math.pow(0.1, dt);
+      angle += dt * 0.14 + vel * dt;
+    }
+    if (visible) render();
+    requestAnimationFrame(frame);
+  }
+
+  function start() {
+    if (loop) return;
+    loop = true; last = performance.now(); requestAnimationFrame(frame);
+  }
+
+  function focus(keys, label) {
+    active = keys;
+    tiles.forEach((tl) => {
+      tl.on = keys.includes(tl.key);
+      tl.node.classList.toggle("on", tl.on);
+      tl.line.classList.toggle("on", tl.on);
+    });
+    const lead = tiles.find((tl) => tl.key === keys[0]);
+    if (lead) {
+      target = FRONT - lead.phase;
+      if (reduceMotion) angle = target;
+    } else {
+      target = null;
+    }
+    caption.replaceChildren();
+    if (keys.length) {
+      caption.append(document.createTextNode(`${label} · `), el("b", "", HUB.name), document.createTextNode(" → "),
+                     el("b", "", keys.map((k) => TECH[k].name).join(" + ")));
+    } else {
+      caption.append(el("span", "", label));
+    }
+    requestAnimationFrame(measure);
+  }
+
+  function done(keys) {
+    tiles.forEach((tl) => {
+      if (keys.includes(tl.key)) { tl.done = true; tl.node.classList.add("done"); tl.line.classList.add("done"); }
+    });
+  }
+
+  function reset() {
+    tiles.forEach((tl) => { tl.on = tl.done = false; tl.node.classList.remove("on", "done"); tl.line.classList.remove("on", "done"); });
+    target = null;
+  }
+
+  new ResizeObserver(() => { measure(); render(); }).observe(stage);
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(stage);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) loop = false; else if (!$("#live").hidden) start();
+  });
+
+  build();
+  return { build, start, focus, done, reset };
+})();
+
+/* =========================================================================
+   Live steps
+   ========================================================================= */
+function buildSteps() {
+  const list = $("#steps");
+  list.replaceChildren();
+  for (const s of STEPS) {
+    const li = el("li", "step");
+    li.dataset.node = s.node; li.dataset.state = "pending";
+    const icon = el("div", "step-icon");
+    icon.append(svg(
+      '<circle class="ring-track" cx="11" cy="11" r="10"/>' +
+      '<circle class="ring-spin" cx="11" cy="11" r="10"/>' +
+      '<circle class="ring-fill" cx="11" cy="11" r="11"/>' +
+      '<path class="tick" d="M6.6 11.4l3 3 5.8-6.2"/>' +
+      '<path class="dash" d="M7 11h8"/>', "0 0 22 22"));
+    const text = el("div", "step-text");
+    const tech = el("div", "step-tech");
+    (STEP_TECH[s.node] || []).forEach((k) => {
+      const role = k === "parser" ? " (parse)" : k === "scorer" ? " (judge)" : "";
+      const dup = k === "parser" || k === "scorer" ? TECH.parser.name === TECH.scorer.name : false;
+      tech.append(el("span", "", TECH[k].name + (dup ? role : "")));
+    });
+    if (s.node !== "report") tech.prepend(el("span", "", "LangGraph"));
+    text.append(el("div", "step-label", s.label), el("div", "step-detail", ""), tech);
+    li.append(icon, text, el("span", "step-ms", ""));
+    list.append(li);
+  }
+}
+function stepEl(node) { return $(`.step[data-node="${node}"]`); }
+function setStep(node, state, detail, ms) {
+  const li = stepEl(node);
+  if (!li) return;
+  li.dataset.state = state;
+  const label = STEPS.find((s) => s.node === node)?.label || node;
+  if (state === "active") Orbit.focus(STEP_TECH[node] || [], label);
+  if (state === "done") Orbit.done(STEP_TECH[node] || []);
+  if (detail !== undefined) li.querySelector(".step-detail").textContent = detail;
+  if (ms !== undefined) li.querySelector(".step-ms").textContent = ms ? formatMs(ms) : "";
+  const done = STEPS.filter((s) => ["done", "skipped"].includes(stepEl(s.node).dataset.state)).length;
+  $("#bar").style.transform = `scaleX(${done / STEPS.length})`;
+}
+function activateNext(afterNode) {
+  const i = STEPS.findIndex((s) => s.node === afterNode);
+  const next = STEPS[i + 1];
+  if (next && stepEl(next.node).dataset.state === "pending") setStep(next.node, "active", "");
+}
+const formatMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+
+/* =========================================================================
+   Report rendering
+   ========================================================================= */
+function gauge(container, value, label, delay = 0) {
+  container.replaceChildren();
+  const r = 44, c = 2 * Math.PI * r;
+  const s = svg(`<circle class="track" cx="50" cy="50" r="${r}"/><circle class="value" cx="50" cy="50" r="${r}"
+                  stroke-dasharray="${c}" stroke-dashoffset="${c}"/>`, "0 0 100 100");
+  const num = el("div", "gauge-num");
+  const b = el("b", "", "0%");
+  num.append(b, el("small", "", label));
+  container.append(s, num);
+  const arc = s.querySelector(".value");
+  const target = c * (1 - value / 100);
+  if (reduceMotion) { arc.setAttribute("stroke-dashoffset", target); b.textContent = `${value}%`; return; }
+  arc.animate([{ strokeDashoffset: c }, { strokeDashoffset: target }],
+              { duration: 1100, delay, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "forwards" });
+  const start = performance.now() + delay;
+  (function count(now) {
+    const p = Math.min(1, Math.max(0, (now - start) / 1100));
+    const eased = 1 - Math.pow(1 - p, 4);
+    b.textContent = `${Math.round(value * eased)}%`;
+    if (p < 1) requestAnimationFrame(count);
+  })(performance.now());
+}
+
+function headline(score) {
+  if (score >= 80) return "Strong, evidence-backed fit.";
+  if (score >= 60) return "Good fit, with a few gaps.";
+  if (score >= 35) return "Partial fit.";
+  return "Not much overlap with this role.";
+}
+
+function lineStart(source) {
+  const m = /:L(\d+)-L\d+$/.exec(source || "");
+  return m ? Number(m[1]) : null;
+}
+
+function proofBlock(result) {
+  const box = el("div", "proof-inner");
+  const kind = citationKind(result.citation);
+  const kindBar = el("div", `proof-kind k-${kind}`);
+  kindBar.append(sourceBadge(kind), document.createTextNode(
+    kind === "cv" ? "Self-reported. This is what the CV says; no code backs it up."
+    : kind === "github" ? `Proof from GitHub${result.citation.commit ? `, pinned to commit ${result.citation.commit}` : ""}.`
+    : "Proof from code that isn't on GitHub yet, so there's no public link."));
+  box.append(kindBar);
+  const head = el("div", "proof-head");
+  head.append(el("span", "src", result.citation.source));
+  if (result.citation.url && kind !== "code") {
+    const a = el("a", "", kind === "cv" ? "Open CV " : "View on GitHub ");
+    a.href = result.citation.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    a.append(svg(ICON.ext));
+    a.querySelector("svg").style.cssText = "width:13px;height:13px";
+    a.addEventListener("click", (e) => e.stopPropagation());
+    head.append(a);
+  }
+  box.append(head);
+  if (result.note) box.append(el("div", "note", result.note));
+  const pre = el("pre");
+  const start = lineStart(result.citation.source);
+  if (start === null) {
+    pre.append(el("div", "cv", result.citation.snippet));
+  } else {
+    result.citation.snippet.split("\n").forEach((line, i) => {
+      const row = el("div");
+      row.append(el("span", "ln", String(start + i)), document.createTextNode(line || " "));
+      pre.append(row);
+    });
+  }
+  box.append(pre);
+  return box;
+}
+
+function rowFor(result, index) {
+  const v = result.verdict;
+  const row = el("div", `row v-${v}`);
+  row.style.animationDelay = reduceMotion ? "0ms" : `${Math.min(index, 14) * 45}ms`;
+
+  const main = el("button", "row-main");
+  main.type = "button";
+  const glyph = el("div", "glyph");
+  if (v === "self_reported") glyph.textContent = "CV";
+  else if (v !== "partial") glyph.append(svg(ICON[v] || ICON.not_checkable));
+
+  const text = el("div");
+  const req = el("div", "req", result.requirement.text);
+  const sub = el("div", "req-sub");
+  if (!result.requirement.must_have) sub.append(el("span", "tag", "nice to have"));
+  if (result.citation) sub.append(sourceBadge(citationKind(result.citation)), el("span", "src", result.citation.source));
+  else if (result.note) sub.append(el("span", "", result.note));
+  text.append(req, sub);
+
+  const side = el("div", "row-side");
+  side.append(el("span", "verdict", VERDICT[v]?.label || v));
+  const conf = el("div", "conf");
+  conf.title = `confidence ${Math.round(result.confidence * 100)}%`;
+  const fill = el("i");
+  fill.style.transform = `scaleX(${result.confidence})`;
+  conf.append(fill);
+  side.append(conf);
+
+  main.append(glyph, text, side);
+  row.append(main);
+
+  if (result.citation) {
+    row.classList.add("has-proof");
+    const chev = svg(ICON.chev); chev.classList.add("chev");
+    side.append(chev);
+    main.setAttribute("aria-expanded", "false");
+    const proof = el("div", "proof");
+    const inner = el("div");
+    inner.append(proofBlock(result));
+    proof.append(inner);
+    row.append(proof);
+    main.addEventListener("click", () => {
+      const open = row.classList.toggle("open");
+      main.setAttribute("aria-expanded", String(open));
+    });
+  } else {
+    main.tabIndex = -1;
+  }
+
+  // Subtle 3D tilt + spotlight, pointer devices only
+  if (!reduceMotion && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    row.addEventListener("pointermove", (e) => {
+      const r = row.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      row.style.setProperty("--mx", `${px * 100}%`);
+      row.style.setProperty("--my", `${py * 100}%`);
+      if (!row.classList.contains("open")) {
+        row.style.transform = `rotateX(${(0.5 - py) * 3}deg) rotateY(${(px - 0.5) * 3}deg) translateZ(0)`;
+      }
+    });
+    row.addEventListener("pointerleave", () => { row.style.transform = ""; });
+  }
+  return row;
+}
+
+function renderReport(report) {
+  $("#candidate").textContent = report.candidate;
+  $("#candidate-inline").textContent = report.candidate;
+  gauge($("#g-code"), report.score, "proven in code");
+  const cvGauge = $("#g-cv");
+  cvGauge.hidden = report.score_with_cv === report.score;
+  if (!cvGauge.hidden) gauge(cvGauge, report.score_with_cv, "with CV claims", 180);
+
+  $("#headline").textContent = report.results.length ? headline(report.score) : "Nothing checkable in this text.";
+  $("#summary").textContent = report.summary;
+
+  const tally = $("#tally"); tally.replaceChildren();
+  const counts = {};
+  report.results.forEach((r) => { counts[r.verdict] = (counts[r.verdict] || 0) + 1; });
+  Object.entries(VERDICT).forEach(([key, meta]) => {
+    if (!counts[key]) return;
+    const chip = el("span"); chip.append(el("b", "", String(counts[key])), document.createTextNode(meta.label));
+    tally.append(chip);
+  });
+
+  const legend = $("#legend"); legend.replaceChildren();
+  const kinds = new Set(report.results.map((r) => citationKind(r.citation)).filter(Boolean));
+  for (const k of ["github", "code", "cv"]) {
+    if (!kinds.has(k)) continue;
+    const item = el("span"); item.append(sourceBadge(k), document.createTextNode(KIND[k].long));
+    legend.append(item);
+  }
+  legend.hidden = !legend.childElementCount;
+
+  const warn = $("#warnings"); warn.replaceChildren();
+  (report.warnings || []).forEach((w) => warn.append(el("div", "", w)));
+
+  const groups = $("#groups"); groups.replaceChildren();
+  let i = 0;
+  for (const g of GROUPS) {
+    const items = report.results.filter((r) => VERDICT[r.verdict]?.group === g.key);
+    if (!items.length) continue;
+    const box = el("div", g.key === "cv" ? "group cv-group" : "group");
+    const head = el("div", "group-head");
+    head.append(el("b", "", g.title), document.createTextNode(`${items.length} · ${g.hint}`));
+    box.append(head);
+    if (g.key === "cv") {
+      const banner = el("div", "cv-banner");
+      banner.append(sourceBadge("cv"));
+      const msg = el("span");
+      msg.append(el("b", "", "Not proven by code. "),
+        document.createTextNode("These rows come from the CV text only. They don't count toward the code score, only the smaller \"with CV claims\" score."));
+      banner.append(msg);
+      box.append(banner);
+    }
+    const rows = el("div", "rows");
+    items.forEach((r) => rows.append(rowFor(r, i++)));
+    box.append(rows);
+    groups.append(box);
+  }
+
+  const t = report.timings_ms || {};
+  const total = Object.values(t).reduce((a, b) => a + b, 0);
+  $("#report-meta").textContent = total ? `${formatMs(total)} total` : "";
+  $("#models").textContent = Object.values(report.models || {}).join(" · ");
+}
+
+/* =========================================================================
+   Run a check (streams steps over SSE-on-fetch)
+   ========================================================================= */
+let running = false, timer = null;
+
+function reveal(section) {
+  section.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => section.classList.remove("pre")));
+}
+
+function toast(message) {
+  const t = $("#toast");
+  t.textContent = message; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 4200);
+}
+
+async function errorMessage(res) {
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 422) return "Paste the full job description (at least 50 characters).";
+  if (res.status === 429) return "Too many checks from this address. Try again in a little while.";
+  return typeof data.detail === "string" ? data.detail : `Request failed (${res.status}).`;
+}
+
+async function runCheck() {
+  const jd = $("#jd").value.trim();
+  if (running) return;
+  if (jd.length < 50) { toast("Paste the full job description (at least 50 characters)."); $("#jd").focus(); return; }
+
+  running = true;
+  document.body.classList.add("busy");
+  Sphere.busy(true);
+  $("#go").disabled = true; $("#go-label").textContent = "Checking…";
+  $("#results").hidden = true; $("#results").classList.add("pre");
+  buildSteps();
+  reveal($("#live"));
+  Orbit.reset();
+  Orbit.start();
+  setStep("parse_jd", "active", "");
+  $("#live").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+
+  const started = performance.now();
+  timer = setInterval(() => { $("#elapsed").textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`; }, 100);
+
+  let report = null;
+  try {
+    const res = await fetch("/api/fit/stream", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jd }),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, cut); buffer = buffer.slice(cut + 2);
+        const event = /^event: (.*)$/m.exec(block)?.[1];
+        const data = JSON.parse(/^data: (.*)$/m.exec(block)?.[1] || "{}");
+        if (event === "step") {
+          setStep(data.node, "done", data.detail, data.ms);
+          activateNext(data.node);
+        } else if (event === "report") {
+          report = data;
+        } else if (event === "error") {
+          throw new Error(data.message);
+        }
+      }
+    }
+    if (!report) throw new Error("The check ended without a report. Please try again.");
+
+    // Any step the graph skipped (e.g. no requirements found) is shown as skipped, not pending.
+    STEPS.forEach((s) => { const st = stepEl(s.node).dataset.state; if (s.node !== "report" && st !== "done") setStep(s.node, "skipped", "skipped"); });
+    setStep("report", "active", "");
+    setStep("report", "done", `${report.results.length} rows`, 0);
+    Orbit.focus([], `Done in ${((performance.now() - started) / 1000).toFixed(1)}s · every step ticked`);
+    Sphere.pulse();
+    renderReport(report);
+    setTimeout(() => {
+      reveal($("#results"));
+      $("#results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    }, reduceMotion ? 0 : 420);
+  } catch (err) {
+    STEPS.forEach((s) => { if (stepEl(s.node).dataset.state === "active") setStep(s.node, "pending", "stopped"); });
+    Orbit.focus([], "Stopped");
+    toast(err.message || "Something went wrong.");
+  } finally {
+    clearInterval(timer);
+    $("#elapsed").textContent = `${((performance.now() - started) / 1000).toFixed(1)}s`;
+    running = false;
+    document.body.classList.remove("busy");
+    Sphere.busy(false);
+    $("#go").disabled = false; $("#go-label").textContent = "Check fit";
+  }
+}
+
+/* =========================================================================
+   Wiring
+   ========================================================================= */
+const jdBox = $("#jd");
+function updateCount() { $("#count").textContent = `${jdBox.value.length.toLocaleString()} chars`; }
+jdBox.addEventListener("input", updateCount);
+jdBox.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runCheck(); }
+});
+$("#form").addEventListener("submit", (e) => { e.preventDefault(); runCheck(); });
+document.querySelectorAll("[data-sample]").forEach((b) => b.addEventListener("click", () => {
+  jdBox.value = SAMPLES[b.dataset.sample]; updateCount(); jdBox.focus();
+}));
+
+fetch("/health").then((r) => r.json()).then((h) => {
+  $("#candidate").textContent = h.candidate || "—";
+  $("#candidate-inline").textContent = h.candidate || "the candidate";
+  const pill = $("#index-pill");
+  pill.lastElementChild.textContent = `${Number(h.indexed_chunks).toLocaleString()} snippets indexed`;
+  $("#models").textContent = Object.values(h.models || {}).join(" · ");
+  applyStack(h);
+}).catch(() => { $("#index-pill").lastElementChild.textContent = "Offline"; });
+</script>
+</body>
+</html>

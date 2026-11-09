@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is git-ignored.
+
+github_repo    = "your-github-username/fitcheck"
+github_user    = "your-github-username" # whose public repos are the evidence
+candidate_name = "Your Name"
+
+# First apply: false. Then push the image (deploy workflow), set true, apply again.
+create_function = false
+
+# Optional
+# aws_region                  = "ap-south-1"
+# create_github_oidc_provider = false   # if the account already has the GitHub OIDC provider
+# github_sub_prefix           = "repo:owner@123/name@456"   # gh api repos/OWNER/NAME/actions/oidc/customization/sub
+# scorer                      = "llm_json"  # or "system_one" (Mercury Decide, paid, falls back to Nemotron)
+# sync_minutes                = 30
+# rate_limit_per_hour         = 20
+# daily_limit                 = 200
+# budget_email                = "you@example.com"
+# budget_usd                  = 2

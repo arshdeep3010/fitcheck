@@ -1,0 +1,31 @@
+# Local stack: PostgreSQL + pgvector and the app. Keys come from your .env file.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: fitcheck
+      POSTGRES_PASSWORD: fitcheck
+      POSTGRES_DB: fitcheck
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitcheck"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      VECTOR_STORE: pgvector
+      DATABASE_URL: postgresql://fitcheck:fitcheck@db:5432/fitcheck
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

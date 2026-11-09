@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>How FitCheck works</title>
+<meta name="description" content="How FitCheck turns a job description into an evidence-cited fit report, and how it stays in sync with GitHub.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050505;
+    --surface: rgba(255, 255, 255, 0.025);
+    --surface-2: rgba(255, 255, 255, 0.045);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #fafafa;
+    --muted: #8b8b8b;
+    --dim: #4d4d4d;
+    --faint: #262626;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --radius: 16px;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 15px/1.6 var(--sans); letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden;
+  }
+  ::selection { background: #fff; color: #000; }
+  a { color: inherit; }
+  code, .mono { font-family: var(--mono); font-size: 0.92em; }
+
+  .atmosphere { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .atmosphere::before {
+    content: ""; position: absolute; inset: -20% -10% auto; height: 60vh;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(255,255,255,0.07), transparent 70%);
+  }
+  .atmosphere::after {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 72px 72px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 45% at 50% 0%, #000 30%, transparent 75%);
+            mask-image: radial-gradient(ellipse 70% 45% at 50% 0%, #000 30%, transparent 75%);
+  }
+  .wrap { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav (same as the main page) */
+  nav { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 600 15px/1 var(--display); letter-spacing: -0.02em; text-decoration: none; }
+  .mark { width: 22px; height: 22px; perspective: 80px; }
+  .mark i {
+    display: block; width: 100%; height: 100%; border: 1.5px solid var(--text); border-radius: 6px;
+    transform: rotateX(28deg) rotateY(-32deg); transform-style: preserve-3d;
+    box-shadow: inset 0 0 0 4px var(--bg), inset 0 0 0 5.5px rgba(255,255,255,0.35);
+  }
+  .nav-right { display: flex; align-items: center; gap: 6px; }
+  .nav-link {
+    display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px;
+    color: var(--muted); font-size: 13px; text-decoration: none; border: 1px solid transparent;
+    transition: color 150ms ease, border-color 150ms ease;
+  }
+  .nav-link[aria-current="page"] { color: var(--text); border-color: var(--border); background: var(--surface); }
+  .nav-cta {
+    display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 10px;
+    background: var(--text); color: #000; font-weight: 600; font-size: 13px; text-decoration: none;
+    transition: transform 160ms var(--ease-out);
+  }
+  .nav-cta:active { transform: scale(0.97); }
+  @media (hover: hover) and (pointer: fine) { .nav-link:hover { color: var(--text); } }
+
+  /* Hero */
+  .hero { padding: 56px 0 8px; max-width: 760px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; color: var(--muted);
+    font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--dim); }
+  h1 { margin: 20px 0 18px; font: 600 clamp(36px, 5.6vw, 60px)/1 var(--display); letter-spacing: -0.045em; }
+  h1 .soft { color: var(--dim); }
+  .lede { margin: 0; color: var(--muted); font-size: 16.5px; max-width: 620px; }
+  .lede b { color: var(--text); font-weight: 500; }
+
+  /* Sections */
+  section { margin-top: 88px; }
+  .sec-head { display: grid; grid-template-columns: 56px 1fr; gap: 0 16px; margin-bottom: 26px; }
+  .sec-num { font: 500 12px/2.2 var(--mono); color: var(--dim); }
+  h2 { margin: 0; font: 600 clamp(24px, 3.2vw, 32px)/1.15 var(--display); letter-spacing: -0.03em; }
+  .sec-sub { grid-column: 2; margin: 10px 0 0; color: var(--muted); max-width: 640px; }
+  .card {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012));
+  }
+
+  /* 1. Pipeline */
+  .pipeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; counter-reset: step; }
+  .step { position: relative; padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 10px; min-height: 196px; }
+  .step-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .step-n { font: 500 12px/1 var(--mono); color: var(--dim); }
+  .step-n::before { counter-increment: step; content: "0" counter(step); }
+  .node { font: 500 11.5px/1 var(--mono); color: var(--muted); padding: 5px 8px; border: 1px solid var(--border); border-radius: 999px; }
+  .step h3 { margin: 4px 0 0; font: 600 17px/1.25 var(--display); letter-spacing: -0.02em; }
+  .step p { margin: 0; color: var(--muted); font-size: 14px; }
+  .runs { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border); color: var(--dim); font-size: 12.5px; }
+  .runs b { color: var(--text); font-weight: 500; }
+  .step.code-step { border-color: var(--border-strong); }
+  .step.code-step .node { color: var(--text); border-color: var(--border-strong); }
+  .graph-note { margin: 14px 0 0; color: var(--dim); font-size: 13px; }
+
+  /* 2. Grounding */
+  .ground { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 12px; }
+  .ladder { padding: 22px; display: flex; flex-direction: column; gap: 0; }
+  .q { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+  .q-dot { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-strong); display: grid; place-items: center; font: 500 12px var(--mono); color: var(--muted); }
+  .q h3 { margin: 3px 0 4px; font: 600 15.5px/1.35 var(--display); letter-spacing: -0.01em; }
+  .q p { margin: 0; color: var(--muted); font-size: 14px; }
+  .branch { margin: 8px 0 0; display: inline-flex; gap: 8px; align-items: center; font: 12.5px var(--mono); color: var(--dim); }
+  .branch .tag { color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: 2px 7px; }
+  .rail { margin-left: 13.5px; width: 1px; height: 22px; background: var(--border-strong); }
+  .q.final .q-dot { background: var(--text); color: #000; border-color: var(--text); }
+  .callout { padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+  .callout h3 { margin: 0; font: 600 15.5px/1.35 var(--display); }
+  .callout p { margin: 0; color: var(--muted); font-size: 14px; }
+  .callout ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  .callout li + li { margin-top: 6px; }
+
+  /* 3. Verdicts */
+  .verdicts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .verdict { padding: 18px 20px; }
+  .verdict-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .badge { font: 500 12px/1 var(--mono); padding: 6px 9px; border-radius: 999px; border: 1px solid var(--border-strong); }
+  .badge.solid { background: var(--text); color: #000; border-color: var(--text); }
+  .badge.half { background: rgba(255,255,255,0.14); }
+  .badge.dash { border-style: dashed; color: var(--muted); }
+  .credit { margin-left: auto; font: 12px var(--mono); color: var(--dim); }
+  .verdict p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .scores { margin-top: 12px; padding: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .scores h3 { margin: 0 0 6px; font: 600 15.5px/1.35 var(--display); }
+  .scores p { margin: 0; color: var(--muted); font-size: 14px; }
+  .formula { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font: 12.5px/1.6 var(--mono); color: var(--muted); overflow-x: auto; }
+
+  /* Proof vs claim */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .side { padding: 22px; }
+  .claim-side { border-style: dashed; border-color: var(--border-strong);
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,0.02) 0 8px, transparent 8px 16px); }
+  .side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .kbadge { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; font: 600 11.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .kbadge.k-github { background: var(--text); color: #000; }
+  .kbadge.k-cv { border: 1px dashed var(--muted); color: var(--muted); }
+  .side-tag { font: 600 18px/1 var(--display); letter-spacing: -0.02em; }
+  .claim-side .side-tag { color: var(--muted); font-style: italic; }
+  .side dl { margin: 0; display: grid; grid-template-columns: 130px 1fr; gap: 10px 14px; font-size: 14px; }
+  .side dt { color: var(--dim); }
+  .side dd { margin: 0; color: var(--muted); }
+  .side dd b { color: var(--text); font-weight: 500; }
+
+  /* 4. Sync */
+  .sync { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 12px; align-items: start; }
+  .sync-steps { padding: 22px; }
+  .sync-steps ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 16px; }
+  .sync-steps li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; }
+  .sync-steps li > span { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); display: grid; place-items: center; font: 500 12px var(--mono); color: var(--muted); }
+  .sync-steps h3 { margin: 3px 0 2px; font: 600 14.5px/1.35 var(--display); }
+  .sync-steps p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+  .live { padding: 0; overflow: hidden; }
+  .live-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.on { background: var(--text); box-shadow: 0 0 0 4px rgba(255,255,255,0.1); }
+  .dot.busy { background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
+  .dot.bad { background: transparent; border: 1.5px solid var(--text); }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  .live-title { font: 600 14.5px/1.3 var(--display); }
+  .live-meta { color: var(--dim); font: 12px var(--mono); margin-top: 2px; }
+  .live-error { margin: 0; padding: 10px 20px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; background: var(--surface-2); }
+  .repo-group { padding: 6px 0 10px; }
+  .repo-group + .repo-group { border-top: 1px solid var(--border); }
+  .group-label { padding: 12px 20px 6px; font: 500 11.5px/1 var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; }
+  .repo { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; padding: 7px 20px; font-size: 14px; }
+  .repo-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .repo-chunks { color: var(--dim); font: 12px var(--mono); }
+  .sha { font: 12px var(--mono); color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--dim); }
+  .sha.none { border: 0; color: var(--dim); }
+  @media (hover: hover) and (pointer: fine) { a.sha:hover { color: var(--text); border-color: var(--text); } }
+  .live-foot { padding: 12px 20px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12.5px; }
+
+  /* 5. Limits */
+  .limits { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .limit { padding: 18px 20px; }
+  .limit h3 { margin: 0 0 6px; font: 600 15px/1.35 var(--display); }
+  .limit p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .cta { margin-top: 88px; padding: 36px; text-align: center; }
+  .cta h2 { margin-bottom: 10px; }
+  .cta p { margin: 0 auto 22px; color: var(--muted); max-width: 520px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px; height: 42px; padding: 0 18px; border-radius: 12px;
+    background: var(--text); color: #000; font-weight: 600; font-size: 14px; text-decoration: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.4), 0 10px 30px -10px rgba(255,255,255,0.35);
+    transition: transform 160ms var(--ease-out);
+  }
+  .btn:active { transform: scale(0.97); }
+
+  footer { margin: 64px 0 40px; padding-top: 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--dim); font-size: 12.5px; }
+  footer .models { font-family: var(--mono); }
+
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
+
+  @media (max-width: 880px) {
+    .pipeline, .verdicts { grid-template-columns: 1fr 1fr; }
+    .ground, .sync, .scores, .compare { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 16px; }
+    .nav-link.optional { display: none; }
+    .pipeline, .verdicts, .limits { grid-template-columns: 1fr; }
+    .step { min-height: 0; }
+    .sec-head { grid-template-columns: 1fr; }
+    .sec-sub { grid-column: 1; }
+    .sec-num { line-height: 1.6; margin-bottom: 6px; }
+    .repo { grid-template-columns: 1fr auto; }
+    .repo-chunks { display: none; }
+    .side dl { grid-template-columns: 1fr; gap: 2px; }
+    .side dd { margin-bottom: 10px; }
+    .cta { padding: 28px 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .dot.busy { animation: none; } }
+</style>
+</head>
+<body>
+<div class="atmosphere" aria-hidden="true"></div>
+
+<div class="wrap">
+  <nav>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"><i></i></span>FitCheck</a>
+    <div class="nav-right">
+      <a class="nav-link" href="/how-it-works" aria-current="page">How it works</a>
+      <a class="nav-cta" href="/">Check a job</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="eyebrow">How it works</div>
+    <h1>It can't claim<br><span class="soft">what it can't cite.</span></h1>
+    <p class="lede">FitCheck reads a job description, searches <b id="candidate">the candidate</b>'s real repositories, and
+      rates every requirement. A model gives an opinion. <b>Plain code decides what gets claimed</b>, and every
+      "Met" links to the exact lines on GitHub.</p>
+  </header>
+
+  <!-- 1. Pipeline -->
+  <section aria-labelledby="h-pipeline">
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <h2 id="h-pipeline">Six steps, one graph</h2>
+      <p class="sec-sub">Each check runs as a LangGraph state graph. The page you used streams each step live as it finishes.
+        Steps with a bright border are plain Python, with no model involved.</p>
+    </div>
+    <ol class="pipeline">
+      <li class="card step">
+        <div class="step-top"><span class="step-n"></span><span class="node">parse_jd</span></div>
+        <h3>Read the job description</h3>
+        <p>A chat model lists each requirement. Lists are split ("Spring Security, OAuth2 and JWT" becomes 3 rows),
+          and years, degrees and location are marked as not checkable from code.</p>
+        <div class="runs">Runs on <b data-model="parser">a chat model</b></div>
+      </li>
+      <li class="card step">
+        <div class="step-top"><span class="step-n"></span><span class="node">retrieve</span></div>
+        <h3>Search the code</h3>
+        <p>Each requirement becomes a vector and is matched against every indexed code snippet.
+          The closest <span data-setting="top_k">5</span> snippets<span class="kw-extra" hidden>, plus up to
+          <span data-setting="keyword_extra">3</span> more that keyword search finds by exact name
+          (like <code>from langgraph.graph import StateGraph</code> for "LangGraph"),</span>
+          become that requirement's only possible evidence.</p>
+        <div class="runs">Runs on <b data-model="embeddings">embeddings</b> + <b data-model="store">a vector index</b></div>
+      </li>
+      <li class="card step">
+        <div class="step-top"><span class="step-n"></span><span class="node">score</span></div>
+        <h3>Judge each requirement</h3>
+        <p>One model call judges all requirements at once: met, partly met or not met, a confidence, and which
+          retrieved snippet is the proof. It can only point at snippets it was shown.</p>
+        <div class="runs">Runs on <b data-model="scorer">a fit scorer</b></div>
+      </li>
+      <li class="card step code-step">
+        <div class="step-top"><span class="step-n"></span><span class="node">ground</span></div>
+        <h3>Apply the grounding rules</h3>
+        <p>Code checks the model's answer. No valid citation or low confidence means Unverified, whatever the model said.
+          See the rules below.</p>
+        <div class="runs">Runs on <b>Python rules</b></div>
+      </li>
+      <li class="card step">
+        <div class="step-top"><span class="step-n"></span><span class="node">check_cv</span></div>
+        <h3>Check the CV for the rest</h3>
+        <p>Only for what code didn't prove: does the CV at least state it? A hit is shown as "Stated on CV",
+          never as Met.</p>
+        <div class="runs">Runs on <b>CV sections</b> + <b data-model="scorer">the same scorer</b></div>
+      </li>
+      <li class="card step code-step">
+        <div class="step-top"><span class="step-n"></span><span class="node">report</span></div>
+        <h3>Write the report</h3>
+        <p>Scores and the summary are computed in code, not written by a model, so the same verdicts always give the
+          same numbers.</p>
+        <div class="runs">Runs on <b>Python</b></div>
+      </li>
+    </ol>
+    <p class="graph-note">If the job description has no requirements, the graph skips straight to the report.
+      If search or scoring is down, every row becomes Unverified and a warning is shown.</p>
+  </section>
+
+  <!-- 2. Grounding -->
+  <section aria-labelledby="h-ground">
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <h2 id="h-ground">Code decides what's claimed</h2>
+      <p class="sec-sub">The model's answer is an opinion. Before anything is shown, every positive answer has to get through these checks.</p>
+    </div>
+    <div class="ground">
+      <div class="card ladder">
+        <div class="q">
+          <span class="q-dot">1</span>
+          <div>
+            <h3>Did the model cite a snippet that was retrieved for this requirement?</h3>
+            <p>Not any snippet: one of the ones found for this exact requirement.</p>
+            <div class="branch">No → <span class="tag">Unverified</span></div>
+          </div>
+        </div>
+        <div class="rail" aria-hidden="true"></div>
+        <div class="q">
+          <span class="q-dot">2</span>
+          <div>
+            <h3>Is its confidence at least <span data-setting="min_confidence">0.5</span>?</h3>
+            <p>Unsure answers are never rounded up to yes, and unsure "not met" answers aren't shown as gaps either.</p>
+            <div class="branch">No → <span class="tag">Unverified</span></div>
+          </div>
+        </div>
+        <div class="rail" aria-hidden="true"></div>
+        <div class="q final">
+          <span class="q-dot">✓</span>
+          <div>
+            <h3>Then the model's answer stands, with its citation</h3>
+            <p>The citation is a permalink to the commit that was indexed, so it keeps pointing at the right lines.</p>
+          </div>
+        </div>
+      </div>
+      <div class="card callout">
+        <h3>Why not just ask a model "is this a fit?"</h3>
+        <p>It would answer confidently, with no proof. Here a model can lean yes, but it can't create a claim by itself.</p>
+        <ul>
+          <li><b>Text pasted into a job description</b> can only change the list of requirements. A "Met" still has to cite a real snippet, and the snippet is shown so you can check it.</li>
+          <li><b>Near misses aren't matches.</b> Docker isn't Kubernetes, JWT isn't OAuth2, LangGraph isn't LangChain.</li>
+          <li><b>An outage claims nothing.</b> If a model is down, every row is Unverified and the score is 0.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Proof vs claim -->
+  <section aria-labelledby="h-sources">
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <h2 id="h-sources">Code is proof. The CV is a claim.</h2>
+      <p class="sec-sub">There are two kinds of evidence and they are never mixed: they are stored apart, searched apart,
+        scored apart, and look different in the report.</p>
+    </div>
+    <div class="compare">
+      <div class="card side proof-side">
+        <div class="side-head"><span class="kbadge k-github">&lt;/&gt; GitHub</span><span class="side-tag">Proof</span></div>
+        <dl>
+          <dt>What it is</dt><dd>Source files from public GitHub repos, in snippets of up to 60 lines.</dd>
+          <dt>How it's checked</dt><dd>Searched first, for every requirement. A "Met" must cite one of these snippets.</dd>
+          <dt>Possible verdicts</dt><dd><b>Met</b>, <b>Partly met</b>, Not met, Unverified</dd>
+          <dt>Counts toward</dt><dd>Both scores, including the main <b>proven in code</b> score.</dd>
+          <dt>You can open it</dt><dd>Yes: a link to the exact lines, pinned to the indexed commit.</dd>
+        </dl>
+      </div>
+      <div class="card side claim-side">
+        <div class="side-head"><span class="kbadge k-cv">▤ CV claim</span><span class="side-tag">Claim</span></div>
+        <dl>
+          <dt>What it is</dt><dd>Sections of the candidate's CV, written by the candidate.</dd>
+          <dt>How it's checked</dt><dd>Only for requirements code did <i>not</i> prove, after the code pass is finished.</dd>
+          <dt>Possible verdicts</dt><dd>Only <b>Stated on CV</b>. A CV line can never make a requirement "Met".</dd>
+          <dt>Counts toward</dt><dd>Only the smaller <b>with CV claims</b> score. The code score ignores it.</dd>
+          <dt>You can open it</dt><dd>It shows the CV text it matched. Nothing verifies it; ask about it in an interview.</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="graph-note">In the report, GitHub evidence has a solid badge and CV claims have a dashed one. CV rows sit in their own
+      dashed box, under a "Not proven by code" label. Code from a folder that isn't on GitHub yet is marked <b>Code</b> and has no link.</p>
+  </section>
+
+  <!-- 4. Verdicts and scores -->
+  <section aria-labelledby="h-verdicts">
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <h2 id="h-verdicts">Six verdicts, two scores</h2>
+      <p class="sec-sub">Proof and claims are scored separately, so a reader never mistakes one for the other.</p>
+    </div>
+    <div class="verdicts">
+      <div class="card verdict"><div class="verdict-top"><span class="badge solid">Met</span><span class="credit">1.0</span></div>
+        <p>A cited snippet shows every part of the requirement.</p></div>
+      <div class="card verdict"><div class="verdict-top"><span class="badge half">Partly met</span><span class="credit">0.5</span></div>
+        <p>Some parts are shown, or a related but different technology.</p></div>
+      <div class="card verdict"><div class="verdict-top"><span class="badge">Not met</span><span class="credit">0</span></div>
+        <p>Confidently no evidence in the public code.</p></div>
+      <div class="card verdict"><div class="verdict-top"><span class="badge dash">Unverified</span><span class="credit">0</span></div>
+        <p>No valid citation or low confidence. Maybe true, but not claimed.</p></div>
+      <div class="card verdict"><div class="verdict-top"><span class="badge dash">Stated on CV</span><span class="credit">CV score only</span></div>
+        <p>Code didn't prove it, but the CV says it. A claim, not proof.</p></div>
+      <div class="card verdict"><div class="verdict-top"><span class="badge dash">Not checkable</span><span class="credit">left out</span></div>
+        <p>Years, degrees, location: code can't prove these, so they aren't scored.</p></div>
+    </div>
+    <div class="card scores">
+      <div>
+        <h3>Proven in code</h3>
+        <p>Only Met and Partly met count. "Stated on CV" counts as 0.</p>
+      </div>
+      <div>
+        <h3>Including CV claims</h3>
+        <p>The same, but "Stated on CV" counts as met. Shown smaller, next to the code score.</p>
+      </div>
+      <div class="formula" style="grid-column: 1 / -1">score = 100 × Σ(weight × credit) ÷ Σ weight
+        &nbsp;·&nbsp; must-have weight 2, nice-to-have weight 1</div>
+    </div>
+  </section>
+
+  <!-- 4. GitHub sync -->
+  <section aria-labelledby="h-sync">
+    <div class="sec-head">
+      <span class="sec-num">05</span>
+      <h2 id="h-sync">Synced with GitHub</h2>
+      <p class="sec-sub">The evidence is <span id="gh-user">the candidate</span>'s public repositories. The server keeps
+        its index in step with GitHub on its own, so a project pushed today can be cited today, with no redeploy.</p>
+    </div>
+    <div class="sync">
+      <div class="card sync-steps">
+        <ol>
+          <li><span>1</span><div><h3>Check every <b data-sync="interval">30</b> minutes</h3>
+            <p>The server asks GitHub for the latest commit of each public, non-fork repo. That's one small call per repo.</p></div></li>
+          <li><span>2</span><div><h3>Re-index only what changed</h3>
+            <p>A repo with a new commit is downloaded at that commit, split into line-ranged snippets, and embedded again.
+              Unchanged repos cost nothing.</p></div></li>
+          <li><span>3</span><div><h3>Swap it in at once</h3>
+            <p>Checks keep running during a sync. Each repo's snippets are replaced in one step, so a check never sees half a repo.</p></div></li>
+          <li><span>4</span><div><h3>Drop what's gone</h3>
+            <p>A repo that is deleted or made private is removed at the next check. Secrets, <code>.env</code> files and
+              build output are never indexed.</p></div></li>
+        </ol>
+      </div>
+
+      <div class="card live" aria-live="polite">
+        <div class="live-head">
+          <span class="dot" id="sync-dot"></span>
+          <div>
+            <div class="live-title" id="sync-title">Loading sync status…</div>
+            <div class="live-meta" id="sync-meta"></div>
+          </div>
+        </div>
+        <p class="live-error" id="sync-error" hidden></p>
+        <div id="repo-groups"></div>
+        <div class="live-foot" id="sync-foot">Each commit links to the exact version that citations point at.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Limits -->
+  <section aria-labelledby="h-limits">
+    <div class="sec-head">
+      <span class="sec-num">06</span>
+      <h2 id="h-limits">What it doesn't do</h2>
+      <p class="sec-sub">Knowing the limits is part of reading the report honestly.</p>
+    </div>
+    <div class="limits">
+      <div class="card limit"><h3>It only sees public code</h3>
+        <p>Work done at a job lives in private repos, so it can't be cited. That's what "Stated on CV" is for.</p></div>
+      <div class="card limit"><h3>"Not met" means "not in these repos"</h3>
+        <p>It's a statement about the evidence, not about the person. A gap is something to ask about in an interview.</p></div>
+      <div class="card limit"><h3>Nothing you paste is stored</h3>
+        <p>The job description is used for one check and thrown away. Your IP is kept only in memory for the hourly rate limit.</p></div>
+      <div class="card limit"><h3>The model can still be wrong</h3>
+        <p>The rules stop unproven claims, not every mistake. Every Met shows its snippet, so you can open it and judge for yourself.</p></div>
+    </div>
+  </section>
+
+  <div class="card cta">
+    <h2>Try it with a real job</h2>
+    <p>Paste a job description you're hiring for, open a citation, and see where it's wrong.</p>
+    <a class="btn" href="/">Check a job →</a>
+  </div>
+
+  <footer>
+    <span>FitCheck · LangGraph · FastAPI · <span id="store-name">vector search</span></span>
+    <span class="models" id="models"></span>
+  </footer>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+
+const MODEL_NAMES = {
+  "nemotron-3-ultra-550b-a55b": "Nemotron 3 Ultra",
+  "nemotron-3-super-120b-a12b": "Nemotron 3 Super",
+  "nemotron-3-embed-1b": "Nemotron Embed 1B",
+  "nemotron-3.5-embed-1b": "Nemotron 3.5 Embed",
+  "mercury-decide": "Mercury Decide",
+};
+const VENDORS = { nvidia: "NVIDIA", inception: "Inception", openai: "OpenAI" };
+function prettyModel(id) {
+  if (!id) return null;
+  const raw = id.replace(/^llm-json:/, "");
+  const [vendor, model] = raw.includes("/") ? raw.split("/", 2) : ["", raw];
+  const key = model.replace(/:free$/, "");
+  if (key === "hash-embedder") return "an offline hash embedder";
+  if (key === "keyword-baseline") return "an offline keyword scorer";
+  if (key === "heuristic") return "rule-based parsing";
+  const name = MODEL_NAMES[key] || key;
+  return VENDORS[vendor] ? `${VENDORS[vendor]} ${name}` : name;
+}
+
+function ago(iso) {
+  if (!iso) return null;
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+function until(iso) {
+  if (!iso) return null;
+  const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  return m <= 0 ? "any moment" : `in ${m} min`;
+}
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const GROUP_LABELS = {
+  github: "From GitHub",
+  local: "From a local copy (not on GitHub yet, so no links)",
+  cv: "CV profile (claims, not proof)",
+};
+
+function renderRepos(repos) {
+  const box = $("#repo-groups");
+  box.replaceChildren();
+  for (const source of ["github", "local", "cv"]) {
+    const rows = repos.filter((r) => r.source === source);
+    if (!rows.length) continue;
+    const group = el("div", "repo-group");
+    group.append(el("div", "group-label", GROUP_LABELS[source]));
+    for (const r of rows) {
+      const row = el("div", "repo");
+      row.append(el("span", "repo-name", source === "cv" ? "profile.md" : r.repo));
+      row.append(el("span", "repo-chunks", `${r.chunks} ${source === "cv" ? "sections" : "snippets"}`));
+      if (source === "github" && r.commit && r.url) {
+        const a = el("a", "sha", r.commit.slice(0, 7));
+        a.href = r.url; a.target = "_blank"; a.rel = "noopener";
+        a.title = `Indexed at commit ${r.commit}`;
+        row.append(a);
+      } else {
+        row.append(el("span", "sha none", source === "cv" ? "self-reported" : "—"));
+      }
+      group.append(row);
+    }
+    box.append(group);
+  }
+  if (!box.childElementCount) box.append(el("div", "group-label", "Nothing indexed yet"));
+}
+
+function renderSync(s) {
+  const dot = $("#sync-dot"), title = $("#sync-title"), meta = $("#sync-meta"), err = $("#sync-error");
+  const gh = (s.repos || []).filter((r) => r.source === "github");
+  if (s.github_user) $("#gh-user").textContent = s.github_user;
+  if (s.interval_min) document.querySelectorAll('[data-sync="interval"]').forEach((n) => { n.textContent = s.interval_min; });
+
+  dot.className = "dot";
+  if (!s.enabled) {
+    title.textContent = "Live sync is off on this server";
+    meta.textContent = `${gh.length} GitHub repos in the index, from the last manual sync`;
+  } else if (s.running) {
+    dot.classList.add("busy");
+    title.textContent = "Checking GitHub now…";
+    meta.textContent = s.last_checked ? `last checked ${ago(s.last_checked)}` : "first check since the server started";
+  } else if (s.last_error) {
+    dot.classList.add("bad");
+    title.textContent = "The last GitHub check failed";
+    meta.textContent = [s.last_checked && `tried ${ago(s.last_checked)}`, s.next_check && `retrying ${until(s.next_check)}`].filter(Boolean).join(" · ");
+  } else {
+    dot.classList.add("on");
+    title.textContent = `Synced with GitHub${s.github_user ? ` · ${s.github_user}` : ""}`;
+    meta.textContent = [s.last_checked && `checked ${ago(s.last_checked)}`, s.next_check && `next ${until(s.next_check)}`].filter(Boolean).join(" · ");
+  }
+  err.hidden = !s.last_error;
+  err.textContent = s.last_error ? `The previous index is still in use. Reason: ${s.last_error}` : "";
+
+  const changed = Object.entries(s.last_changes || {});
+  $("#sync-foot").textContent = changed.length
+    ? `Last change: ${changed.map(([k, v]) => `${k} (${typeof v === "number" ? `${v} snippets` : v})`).join(", ")}.`
+    : "Each commit links to the exact version that citations point at.";
+  renderRepos(s.repos || []);
+}
+
+async function loadSync() {
+  try {
+    const res = await fetch("/api/sync/status");
+    if (!res.ok) throw new Error(res.status);
+    renderSync(await res.json());
+  } catch {
+    $("#sync-title").textContent = "Sync status is unavailable";
+    $("#sync-meta").textContent = "";
+  }
+}
+
+fetch("/health").then((r) => r.json()).then((h) => {
+  if (h.candidate) $("#candidate").textContent = h.candidate;
+  const m = h.models || {};
+  const names = { parser: prettyModel(m.parser), embeddings: prettyModel(m.embeddings), scorer: prettyModel(m.scorer) };
+  const pg = (h.stack || {}).store === "pgvector";
+  names.store = pg ? "pgvector (PostgreSQL, HNSW)" : "an in-memory cosine index";
+  document.querySelectorAll("[data-model]").forEach((n) => {
+    const v = names[n.dataset.model];
+    if (v) n.textContent = n.textContent.startsWith("the same") ? `the same ${v}` : v;
+  });
+  $("#store-name").textContent = pg ? "pgvector" : "in-memory vectors";
+  $("#models").textContent = Object.values(m).join(" · ");
+  const s = h.settings || {};
+  if (s.min_confidence !== undefined) document.querySelectorAll('[data-setting="min_confidence"]').forEach((n) => { n.textContent = s.min_confidence; });
+  if (s.top_k !== undefined) document.querySelectorAll('[data-setting="top_k"]').forEach((n) => { n.textContent = s.top_k; });
+  if (s.keyword_extra !== undefined) {
+    document.querySelectorAll('[data-setting="keyword_extra"]').forEach((n) => { n.textContent = s.keyword_extra; });
+    document.querySelectorAll(".kw-extra").forEach((n) => { n.hidden = !s.keyword_extra; });
+  }
+}).catch(() => {});
+
+loadSync();
+setInterval(() => { if (!document.hidden) loadSync(); }, 30000);
+</script>
+</body>
+</html>
