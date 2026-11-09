@@ -3,7 +3,7 @@
 
 > **One line:** paste a job description, get an honest fit report for me, where every "met" links to the exact lines of code that prove it, and gaps are shown as gaps.
 >
-> **Status (8 Nov 2026):** recruiter mode built · **109 tests** (101 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
+> **Status (8 Nov 2026):** recruiter mode built · **113 tests** (105 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
 > **Scoring today:** the free Nemotron scorer (`SCORER=llm_json`, now also the default in code). Mercury Decide costs ~₹0.03 per check and needs OpenRouter credits (§7). **On 8 Nov OpenRouter lists Mercury Decide with 0 provider endpoints** (`404 No endpoints found`, with a new key too), so `SCORER=system_one` currently gives Unverified rows with a warning. Nothing in the app can fix that; switch back when it's served again.
 > **Fixed on 7 Nov:** CV search on pgvector returned almost nothing (measured, §6.3); a forged `X-Forwarded-For` could dodge the rate limit; no reconnect after Neon drops idle connections; the default scorer in code didn't match the docs.
 > **Mercury Decide run live:** 84% on 7 Nov (it leaned yes on 4 near misses; grounding demoted all 4). After fixing its status criteria on 8 Nov: 100% on the development set.
@@ -301,7 +301,7 @@ fitcheck/
 │   ├── heldout.jsonl      Held-out set: 31 requirements from 4 real postings, labelled with evidence, frozen by hash
 │   └── run_evals.py       Accuracy, false-claim rate, coverage, latency per scorer
 ├── profile/profile.md     My CV as self-reported claims (public)
-├── tests/                 109 tests: 101 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
+├── tests/                 113 tests: 105 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
 ├── Dockerfile             Non-root, $PORT-aware (any container host)
 ├── lambda.Dockerfile      Same app on the Lambda base image + Lambda Web Adapter
 ├── docker-compose.yml     Postgres + pgvector + app
@@ -500,7 +500,7 @@ CREATE INDEX chunks_terms_gin ON chunks USING gin (terms);
 | Fit scoring (default today) | `nvidia/nemotron-3-ultra-550b-a55b` as a JSON scorer (`SCORER=llm_json`) | NVIDIA API | Free tier |
 | Fit scoring (calibrated) | `inception/mercury-decide` (`SCORER=system_one`) | OpenRouter System One API | $0.02 / M input tokens, output free ≈ **₹0.03 per check**; needs OpenRouter credits |
 | Database | Postgres + pgvector | Neon / Supabase free tier | ₹0 |
-| Hosting | AWS Lambda (container image) + function URL, Terraform in `infra/` | Lambda always-free allowance | ₹0 to a few rupees a month (§10) |
+| Hosting | AWS Lambda (container image) behind CloudFront, Terraform in `infra/` | Lambda always-free allowance | ₹0 to a few rupees a month (§10) |
 
 Every model is one env var, so if a free model disappears, change one line. That already happened once: `inception/mercury-decide:free` was withdrawn in Nov 2026, so the scorer became a switch (`SCORER`), and the app runs free on Nemotron until there are OpenRouter credits.
 
@@ -742,21 +742,27 @@ How to read it honestly:
 **Target: AWS Lambda, with Terraform and GitHub Actions** (`infra/`, step by step in [infra/README.md](infra/README.md)). It's designed for the public: no login, nothing stored, rate limited.
 
 ```
-visitor ──HTTPS──> function URL (streaming) ──> Lambda: Lambda Web Adapter -> uvicorn -> FastAPI
+visitor ──HTTPS──> CloudFront (edge; caches the 2 pages) ──signed (OAC)──> function URL (AWS_IAM, streaming)
+                                                              └──> Lambda: Lambda Web Adapter -> uvicorn -> FastAPI
 EventBridge, every 30 min ──{"action":"sync"}──> same function -> POST /events -> GitHub sync
 Neon Postgres + pgvector: index, shared rate limits, sync status · SSM: keys, database URL, sync token
 ```
 
 - **One function, the same app.** `lambda.Dockerfile` puts the FastAPI app on the Lambda base image with the **Lambda Web Adapter**, which turns Lambda requests into HTTP for uvicorn and streams the response back, so the step-by-step report (SSE) works through a `RESPONSE_STREAM` function URL. Locally the adapter does nothing.
+- **CloudFront in front** (`infra/cloudfront.tf`). Visitors connect to an edge location near them (price class 200 includes India). The function URL is `AWS_IAM`: it answers only requests CloudFront signed with **origin access control**, so nobody can go around CloudFront. What the app does for it:
+  - **POST bodies are signed too,** and Lambda doesn't accept unsigned payloads, so the page sends the body's SHA-256 in `x-amz-content-sha256` (`bodyHash` in `index.html`; ignored without CloudFront).
+  - **The visitor's IP:** behind CloudFront the connection's `sourceIp` is always a CloudFront server, so with `BEHIND_CLOUDFRONT=true` the IP comes from `CloudFront-Viewer-Address`, which CloudFront adds. It's trusted only then, because only CloudFront can reach the function (tested). `/health` reports which source was used (`client_ip_from`, never the IP), and the deploy warns if it isn't `cloudfront`.
+  - **Caching:** only the two pages, which send `s-maxage=300` (5 minutes at the edge; browsers always revalidate). API responses send no `Cache-Control`, and the cache policy's default TTL is 0, so they're never cached. `/api/*` isn't compressed, so the streamed events aren't held back. Each deploy clears the cache (`/*`, one free invalidation path).
+  - **Timeout:** CloudFront waits up to 60 s between bytes; the longest quiet gap in a check is one model call. Syncs never go through CloudFront: the schedule and the deploy invoke the function directly.
 - **What changes on Lambda (`RUNTIME=lambda`)**, because a function is frozen between requests and there can be several at once:
-  - **GitHub sync:** no background loop. An EventBridge rule invokes the function every 30 minutes; the adapter posts the event to `POST /events`, which runs the sync and answers only when it's done. `/events` is reachable through the public URL too, so the event carries a generated token. The deploy workflow syncs once right after each deploy.
+  - **GitHub sync:** no background loop. An EventBridge rule invokes the function every 30 minutes; the adapter posts the event to `POST /events`, which runs the sync and answers only when it's done. `/events` is reachable through CloudFront too, so the event carries a generated token. The deploy workflow syncs once right after each deploy.
   - **Rate limits:** `RATE_LIMIT_STORE=postgres` (`app/shared.py`): the per-visitor hourly window and the daily cap live in the same Neon database, so every instance counts the same visitors. Each check is one atomic SQL statement, so two requests can't both take the last slot. The key is an HMAC of the IP, never the IP (tested).
-  - **Visitor IP:** read from the request context the adapter adds (`sourceIp` of the TCP connection), not from `X-Forwarded-For`, which a visitor can forge.
+  - **Visitor IP:** from `CloudFront-Viewer-Address` behind CloudFront (above), else from the request context the adapter adds (`sourceIp` of the TCP connection). Never from `X-Forwarded-For`, which a visitor can forge.
   - **Sync status:** "last checked" is saved in Postgres, so every instance shows the same one.
   - **Secrets:** read from SSM Parameter Store (`SSM_PREFIX=/fitcheck`) at startup; nothing secret in environment variables or GitHub.
 - **No VPC on purpose:** the function only calls public APIs (NVIDIA, GitHub, OpenRouter, Neon). A VPC would need a NAT gateway for that, about $30+ a month even when idle.
-- **CI/CD:** `ci.yml` runs every test, including the pgvector ones against a real `pgvector/pgvector:pg16` service. When it passes on `main`, `deploy.yml` signs in to AWS with GitHub OIDC (no AWS keys stored), builds and pushes the image to ECR, updates the function, syncs, and checks `/health`.
-- **Cost:** expected ₹0 to a few rupees a month. Lambda's always-free allowance covers ~20,000 checks a month at 1 GB and the daily limit stops at ~6,000; function URLs, EventBridge, SSM standard parameters and this much logging are free; ECR is a few cents; Neon's free plan holds the index. An optional AWS Budget emails at 80% of `budget_usd`. These are from AWS pricing, not a measured bill.
+- **CI/CD:** `ci.yml` runs every test, including the pgvector ones against a real `pgvector/pgvector:pg16` service. When it passes on `main`, `deploy.yml` signs in to AWS with GitHub OIDC (no AWS keys stored), builds and pushes the image to ECR, updates the function, syncs, clears CloudFront's copy of the pages, and checks `/health` through CloudFront.
+- **Cost:** expected ₹0 to a few rupees a month. Lambda's always-free allowance covers ~20,000 checks a month at 1 GB and the daily limit stops at ~6,000; CloudFront's always-free tier (1 TB and 10M requests a month), function URLs, EventBridge, SSM standard parameters and this much logging are free; ECR is a few cents; Neon's free plan holds the index. An optional AWS Budget emails at 80% of `budget_usd`. These are from AWS pricing, not a measured bill.
 
 **First deploy, in short** (details in `infra/README.md`): `terraform apply` with `create_function = false` → put the NVIDIA key and the Neon **direct** URL into SSM → set `AWS_ROLE_ARN` and `AWS_REGION` as repo variables → push to `main` (pushes the image) → `create_function = true`, `terraform apply` → run the deploy workflow once to fill the index. Terraform apply is run by hand.
 

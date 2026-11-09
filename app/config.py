@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = 20  # per visitor IP
     daily_limit: int = 200  # all visitors together, per UTC day (0 = off): protects the free quotas
     trust_proxy_headers: bool = False  # only behind a proxy that sets X-Forwarded-For
+    # On Lambda behind CloudFront: the function URL accepts only CloudFront's signed requests
+    # (AWS_IAM + origin access control), so every request's sourceIp is a CloudFront server and
+    # the visitor's IP comes from the CloudFront-Viewer-Address header CloudFront adds.
+    behind_cloudfront: bool = False
     # "memory" = per process (one server). "postgres" = shared by every instance, for Lambda
     # (needs VECTOR_STORE=pgvector; stores an HMAC of the IP, never the IP).
     rate_limit_store: str = "memory"

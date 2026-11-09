@@ -1,7 +1,8 @@
 name: deploy
 
 # After ci passes on main: build the Lambda image, push it to ECR, point the function at it,
-# sync with GitHub once (fills a fresh database right away), then check the live /health.
+# sync with GitHub once (fills a fresh database right away), clear CloudFront's copy of the
+# pages, then check the live /health.
 # Also runnable by hand (Actions > deploy). Does nothing until the repository variables from
 # `terraform output github_variables` are set, so forks and a fresh clone don't fail here.
 on:
@@ -93,13 +94,27 @@ jobs:
             echo "::warning::The sync didn't report back. Check the function's logs; are the SSM secrets set?"
           fi
 
+      # The site is served through CloudFront (infra/cloudfront.tf): clear its 5-minute copy of
+      # the pages so the new ones show at once, then check /health through it. Before CloudFront
+      # exists this falls back to the function's own (then public) URL.
       - name: Check the live app
         if: steps.update.outputs.exists == 'true'
         run: |
           set -euo pipefail
-          url=$(aws lambda get-function-url-config --function-name "$NAME" --query FunctionUrl --output text)
+          if cdn=$(aws ssm get-parameter --name "/$NAME-deploy/cloudfront" --query Parameter.Value --output text 2>/dev/null); then
+            url=$(jq -r .url <<<"$cdn")
+            aws cloudfront create-invalidation --distribution-id "$(jq -r .id <<<"$cdn")"               --paths "/*" --query Invalidation.Id --output text
+          else
+            url=$(aws lambda get-function-url-config --function-name "$NAME" --query FunctionUrl --output text)
+          fi
           for i in 1 2 3 4 5 6; do
-            if body=$(curl -fsS --max-time 30 "${url%/}/health"); then echo "$body"; echo "Live: $url"; exit 0; fi
+            if body=$(curl -fsS --max-time 30 "${url%/}/health"); then
+              echo "$body"; echo "Live: $url"
+              if [ -n "${cdn:-}" ] && [ "$(jq -r .client_ip_from <<<"$body")" != "cloudfront" ]; then
+                echo "::warning::CloudFront didn't pass CloudFront-Viewer-Address, so every visitor shares one rate limit. Check the origin request policy."
+              fi
+              exit 0
+            fi
             echo "not ready yet ($i)"; sleep 10
           done
           echo "::error::$url/health did not answer. Are database_url and nvidia_api_key set in SSM? See infra/README.md."

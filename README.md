@@ -49,13 +49,13 @@ Mercury first scored 84%: on 4 near misses (Kubernetes, Spring Cloud, OAuth2, mi
 
 ```bash
 pip install -r requirements-dev.txt
-PROVIDER_MODE=fake pytest -q                         # offline, no keys (101 pass, 8 pgvector tests skip)
+PROVIDER_MODE=fake pytest -q                         # offline, no keys (105 pass, 8 pgvector tests skip)
 cp .env.example .env                                 # add NVIDIA + OpenRouter keys
 python -m scripts.ingest --github <your-user> --profile profile/profile.md
 uvicorn app.main:app --reload
 ```
 
-**Deploy:** `infra/` has the Terraform for AWS Lambda (container image, streaming function URL, an EventBridge schedule for the GitHub sync, secrets in SSM, a GitHub OIDC deploy role, an optional budget alert), and `.github/workflows/deploy.yml` ships every green push to `main`. Expected cost: ₹0 to a few rupees a month. Steps: [infra/README.md](infra/README.md).
+**Deploy:** `infra/` has the Terraform for AWS Lambda (container image, CloudFront in front of a streaming function URL that only CloudFront can call, an EventBridge schedule for the GitHub sync, secrets in SSM, a GitHub OIDC deploy role, an optional budget alert), and `.github/workflows/deploy.yml` ships every green push to `main`. Expected cost: ₹0 to a few rupees a month. Steps: [infra/README.md](infra/README.md).
 
 A **How it works** page (`/how-it-works`) explains the pipeline and grounding rules, and shows live which repos are indexed at which commit (`GET /api/sync/status`).
 

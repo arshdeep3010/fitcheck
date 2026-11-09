@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.config import load_ssm
 from app.main import create_app
 from app.rag.sync import GitHubSyncer
-from app.ratelimit import lambda_source_ip
+from app.ratelimit import cloudfront_viewer_ip, lambda_source_ip
 
 JD = """Backend engineer
 - Build REST APIs with Spring Boot
@@ -97,6 +97,48 @@ def test_rate_limit_on_lambda_is_per_source_ip(fake_settings):
         other = client.post("/api/fit", json={"jd": JD}, headers=context("198.51.100.4")).status_code
     assert first == [200, 200, 200, 429]
     assert other == 200
+
+
+def test_cloudfront_viewer_ip_parses_ip_and_port():
+    assert cloudfront_viewer_ip("198.51.100.10:46532") == "198.51.100.10"
+    assert cloudfront_viewer_ip("2001:db8::1:46532") == "2001:db8::1"
+    assert cloudfront_viewer_ip("[2001:db8::1]:46532") == "2001:db8::1"
+    assert cloudfront_viewer_ip("") == ""
+    assert cloudfront_viewer_ip("nonsense:443") == ""
+
+
+def viewer(ip: str) -> dict:
+    # Behind CloudFront every request's sourceIp is one of CloudFront's servers.
+    return {**context("130.176.0.1"), "cloudfront-viewer-address": f"{ip}:51234"}
+
+
+def test_rate_limit_behind_cloudfront_is_per_viewer_address(fake_settings):
+    fake_settings.behind_cloudfront = True
+    with lambda_client(fake_settings) as client:
+        first = [client.post("/api/fit", json={"jd": JD}, headers=viewer("203.0.113.9")).status_code
+                 for _ in range(4)]
+        other = client.post("/api/fit", json={"jd": JD}, headers=viewer("198.51.100.4")).status_code
+        assert client.get("/health", headers=viewer("203.0.113.9")).json()["client_ip_from"] == "cloudfront"
+        # A request without the header (it shouldn't happen) falls back to sourceIp.
+        assert client.get("/health", headers=context("130.176.0.1")).json()["client_ip_from"] == "function_url"
+    assert first == [200, 200, 200, 429]
+    assert other == 200
+
+
+def test_viewer_header_is_ignored_unless_behind_cloudfront(fake_settings):
+    # Without CloudFront the function URL is public, so anyone could write that header.
+    with lambda_client(fake_settings) as client:
+        codes = [client.post("/api/fit", json={"jd": JD},
+                             headers={**context("203.0.113.9"), "cloudfront-viewer-address": f"10.0.0.{i}:1"}
+                             ).status_code for i in range(4)]
+    assert codes == [200, 200, 200, 429]
+
+
+def test_pages_may_be_cached_by_cloudfront_but_not_the_api(fake_settings):
+    with TestClient(create_app(fake_settings)) as client:
+        assert "s-maxage=300" in client.get("/").headers["cache-control"]
+        assert "s-maxage=300" in client.get("/how-it-works").headers["cache-control"]
+        assert "cache-control" not in client.get("/health").headers
 
 
 # ---------- secrets from SSM ----------

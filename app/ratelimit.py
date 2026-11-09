@@ -8,6 +8,7 @@ In memory: good for one server. On Lambda (several instances) app/shared.py keep
 same limits in Postgres.
 """
 
+import ipaddress
 import json
 import time
 from collections import deque
@@ -83,6 +84,21 @@ def lambda_source_ip(request_context: str) -> str:
         context = json.loads(request_context) if request_context else {}
         return str(context.get("http", {}).get("sourceIp") or "")
     except (ValueError, AttributeError):
+        return ""
+
+
+def cloudfront_viewer_ip(viewer_address: str) -> str:
+    """The visitor's IP from CloudFront's CloudFront-Viewer-Address header ("ip:port", e.g.
+    198.51.100.10:46532; for IPv6 the port follows the last colon too).
+
+    Only trustworthy when CloudFront is the only way in: the function URL then requires
+    CloudFront's own signature (AWS_IAM + origin access control), so nobody can reach the app
+    with a header they wrote themselves. Returns "" for anything that isn't an IP address.
+    """
+    host = viewer_address.strip().rsplit(":", 1)[0].strip("[]") if ":" in viewer_address else ""
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
         return ""
 
 

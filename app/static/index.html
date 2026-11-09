@@ -1200,6 +1200,16 @@ function toast(message) {
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 4200);
 }
 
+// CloudFront signs each request it forwards to the Lambda function URL (origin access
+// control), and for a POST it signs with the body's SHA-256, which the browser must send.
+// Without CloudFront in front the header is simply ignored.
+async function bodyHash(body) {
+  if (!window.crypto?.subtle) return {};  // only on plain-http hosts other than localhost
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return { "x-amz-content-sha256": hex };
+}
+
 async function errorMessage(res) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 422) return "Paste the full job description (at least 50 characters).";
@@ -1229,8 +1239,9 @@ async function runCheck() {
 
   let report = null;
   try {
+    const body = JSON.stringify({ jd });
     const res = await fetch("/api/fit/stream", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jd }),
+      method: "POST", headers: { "Content-Type": "application/json", ...(await bodyHash(body)) }, body,
     });
     if (!res.ok) throw new Error(await errorMessage(res));
 

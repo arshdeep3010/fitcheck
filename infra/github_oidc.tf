@@ -59,7 +59,8 @@ resource "aws_iam_role" "deploy" {
 }
 
 # Least privilege: push to one repository, update and invoke one function, read the sync token
-# (the workflow syncs right after a deploy, so a fresh database is filled at once).
+# (the workflow syncs right after a deploy, so a fresh database is filled at once), and clear
+# one distribution's cache.
 data "aws_iam_policy_document" "deploy" {
   statement {
     sid       = "EcrLogin"
@@ -90,6 +91,25 @@ data "aws_iam_policy_document" "deploy" {
     sid       = "ReadSyncToken"
     actions   = ["ssm:GetParameter"]
     resources = [aws_ssm_parameter.sync_token.arn]
+  }
+
+  # After a deploy: find the distribution, clear its copy of the pages, check the live app.
+  dynamic "statement" {
+    for_each = var.create_function ? [1] : []
+    content {
+      sid       = "ClearPageCache"
+      actions   = ["cloudfront:CreateInvalidation"]
+      resources = [aws_cloudfront_distribution.app[0].arn]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.create_function ? [1] : []
+    content {
+      sid       = "FindDistribution"
+      actions   = ["ssm:GetParameter"]
+      resources = [aws_ssm_parameter.cloudfront[0].arn]
+    }
   }
 }
 

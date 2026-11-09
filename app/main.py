@@ -27,7 +27,7 @@ from app.deps import build_deps
 from app.graph import build_graph, run_fit_check, stream_fit_check
 from app.models import FitReport
 from app.rag.sync import GitHubSyncer
-from app.ratelimit import DailyCap, RateLimiter, client_ip, lambda_source_ip
+from app.ratelimit import DailyCap, RateLimiter, client_ip, cloudfront_viewer_ip, lambda_source_ip
 from app.shared import PgDailyCap, PgRateLimiter, PgState
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -83,14 +83,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="FitCheck", version="0.2.0", lifespan=lifespan)
 
-    def visitor_ip(request: Request) -> str:
+    def visitor(request: Request) -> tuple[str, str]:
+        """(the visitor's IP, where it came from)."""
         if settings.runtime == "lambda":
+            if settings.behind_cloudfront:
+                ip = cloudfront_viewer_ip(request.headers.get("cloudfront-viewer-address", ""))
+                if ip:
+                    return ip, "cloudfront"
             ip = lambda_source_ip(request.headers.get("x-amzn-request-context", ""))
             if ip:
-                return ip
+                return ip, "function_url"
         return client_ip(request.headers.get("x-forwarded-for", ""),
                          request.client.host if request.client else "unknown",
-                         settings.trust_proxy_headers, settings.proxy_hops)
+                         settings.trust_proxy_headers, settings.proxy_hops), "connection"
+
+    def visitor_ip(request: Request) -> str:
+        return visitor(request)[0]
 
     def guard(body: FitRequest, request: Request) -> None:
         """Size + rate limits, checked before any model call (and before a stream opens)."""
@@ -105,13 +113,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(429, "The demo has reached today's limit. Please try again tomorrow.",
                                 headers={"Retry-After": str(retry_after)})
 
+    # The two pages may sit in CloudFront for 5 minutes (s-maxage); browsers always revalidate
+    # (max-age=0), and a deploy clears CloudFront's copy. API responses carry no such header,
+    # so CloudFront never caches them.
+    page_cache = {"Cache-Control": "public, max-age=0, s-maxage=300"}
+
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html", headers=page_cache)
 
     @app.get("/how-it-works", include_in_schema=False)
     async def how_it_works() -> FileResponse:
-        return FileResponse(STATIC_DIR / "how-it-works.html")
+        return FileResponse(STATIC_DIR / "how-it-works.html", headers=page_cache)
 
     @app.get("/api/sync/status")
     async def sync_status(request: Request) -> dict:
@@ -168,7 +181,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                   "fallback": deps.fallback_scorer.name if deps.fallback_scorer else None,
                                   "retry_in_s": deps.credits.seconds_left()},
                 # What actually runs each step, so the UI can show the real stack.
-                "stack": {"framework": "LangGraph", "api": "FastAPI", "store": settings.vector_store}}
+                "stack": {"framework": "LangGraph", "api": "FastAPI", "store": settings.vector_store},
+                # Which source the rate limit takes your IP from (never the IP itself), so a
+                # deploy can confirm CloudFront passes the visitor's address through.
+                "client_ip_from": visitor(request)[1]}
 
     # Nothing about a request is stored: no JD, no IP beyond the in-memory rate window.
 

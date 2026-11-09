@@ -1,6 +1,15 @@
 output "app_url" {
-  description = "FitCheck: the page, the API and /how-it-works."
-  value       = var.create_function ? aws_lambda_function_url.app[0].function_url : "not created yet: push the image, then apply with create_function = true"
+  description = "FitCheck through CloudFront: the page, the API and /how-it-works."
+  value       = var.create_function ? "https://${aws_cloudfront_distribution.app[0].domain_name}/" : "not created yet: push the image, then apply with create_function = true"
+}
+
+output "function_url" {
+  description = "The function's own URL. Answers only CloudFront's signed requests (403 otherwise)."
+  value       = var.create_function ? aws_lambda_function_url.app[0].function_url : null
+}
+
+output "cloudfront_distribution_id" {
+  value = var.create_function ? aws_cloudfront_distribution.app[0].id : null
 }
 
 output "github_variables" {

@@ -1,4 +1,4 @@
-# FitCheck on AWS: one Lambda function (container image) with a public streaming URL,
+# FitCheck on AWS: one Lambda function (container image) behind CloudFront (cloudfront.tf),
 # a schedule that keeps the index in step with GitHub, secrets in SSM, logs in CloudWatch.
 # No VPC on purpose: the function only calls public APIs (NVIDIA, GitHub, OpenRouter, Neon),
 # and a VPC would need a NAT gateway for that (~$30+ a month even when idle).
@@ -50,7 +50,7 @@ resource "aws_ssm_parameter" "secret" {
 }
 
 # The schedule's sync events and POST /api/sync must carry this token, because /events is
-# reachable through the public URL too. Generated here; also salts the rate-limit IP hashes.
+# reachable through CloudFront too. Generated here; also salts the rate-limit IP hashes.
 resource "random_password" "sync_token" {
   length  = 40
   special = false
@@ -126,6 +126,7 @@ resource "aws_lambda_function" "app" {
       VECTOR_STORE             = "pgvector"
       DB_POOL_MIN              = "0" # a frozen function holds no idle connections
       RATE_LIMIT_STORE         = "postgres"
+      BEHIND_CLOUDFRONT        = "true" # the visitor's IP is in CloudFront-Viewer-Address
       RATE_LIMIT_PER_HOUR      = tostring(var.rate_limit_per_hour)
       DAILY_LIMIT              = tostring(var.daily_limit)
       SCORER                   = var.scorer
@@ -142,36 +143,13 @@ resource "aws_lambda_function" "app" {
   }
 }
 
+# Only CloudFront can call it (AWS_IAM: CloudFront signs every request; cloudfront.tf grants
+# the distribution access). Visitors use the CloudFront address.
 resource "aws_lambda_function_url" "app" {
   count              = local.fn
   function_name      = aws_lambda_function.app[0].function_name
-  authorization_type = "NONE"
+  authorization_type = "AWS_IAM"
   invoke_mode        = "RESPONSE_STREAM" # the step-by-step report is Server-Sent Events
-}
-
-# A function URL with auth NONE still needs a resource policy that lets anyone call it
-# through the URL (and, for URLs created since October 2025, InvokeFunction too, limited to
-# calls that come through the URL).
-resource "aws_lambda_permission" "url" {
-  count                  = local.fn
-  statement_id           = "PublicFunctionUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.app[0].function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-  # One change to the function's policy at a time: creating the URL edits it too, and a
-  # parallel AddPermission fails with 409 "concurrent update".
-  depends_on = [aws_lambda_function_url.app]
-}
-
-resource "aws_lambda_permission" "url_invoke" {
-  count                    = local.fn
-  statement_id             = "PublicFunctionUrlInvoke"
-  action                   = "lambda:InvokeFunction"
-  function_name            = aws_lambda_function.app[0].function_name
-  principal                = "*"
-  invoked_via_function_url = true
-  depends_on               = [aws_lambda_permission.url]
 }
 
 # ---------------------------------------------------------------- GitHub sync schedule
