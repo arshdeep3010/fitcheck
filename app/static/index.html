@@ -82,6 +82,45 @@
   @media (hover: hover) and (pointer: fine) { a.pill:hover { color: var(--text); border-color: var(--border-strong); } }
   .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px rgba(255,255,255,0.12); }
 
+  /* ---------- Candidate: who is being checked, visible before anything loads ---------- */
+  .candidate-card {
+    display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 22px 0 0;
+    padding: 12px 16px 12px 14px; border: 1px solid var(--border-strong); border-radius: 14px;
+    background: var(--surface-2);
+  }
+  .cand-avatar {
+    display: grid; place-content: center; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--text); color: var(--bg); font: 600 15px/1 var(--display); letter-spacing: -0.02em;
+  }
+  .cand-text { display: flex; flex-direction: column; gap: 3px; }
+  .cand-label { color: var(--muted); font: 500 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.14em; }
+  .cand-name { font: 600 clamp(22px, 2.6vw, 28px)/1.05 var(--display); letter-spacing: -0.03em; color: var(--text); }
+  .cand-links { display: flex; gap: 8px; }
+  .cand-link {
+    display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border: 1px solid var(--border-strong);
+    border-radius: 999px; color: var(--text); font-size: 12.5px; text-decoration: none;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+  @media (hover: hover) and (pointer: fine) { .cand-link:hover { background: var(--surface-2); border-color: var(--muted); } }
+  .cand-link:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+  /* ---------- Which model judges right now ---------- */
+  .judge {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 14px 4px 0;
+    color: var(--muted); font-size: 13px;
+  }
+  .judge-item { display: inline-flex; align-items: center; gap: 7px; }
+  .judge-item b { color: var(--text); font-weight: 500; }
+  .judge-label { font: 500 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
+  .state { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
+           font: 500 11px/1.5 var(--mono); letter-spacing: 0.04em; border: 1px solid var(--border); }
+  .state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .state.on { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); background: rgba(74, 222, 128, 0.08); }
+  .state.on::before { box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18); }
+  .state.standby { color: var(--muted); }
+  .state.standby::before { background: transparent; border: 1px solid currentColor; }
+  .state.warn { color: #fbbf24; border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.08); }
+
   /* ---------- Hero ---------- */
   .hero { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 24px; align-items: center; padding: 48px 0 8px; }
   .eyebrow {
@@ -403,6 +442,7 @@
     .scoreboard { grid-template-columns: auto auto; }
     .summary { grid-column: 1 / -1; }
     .nav-right .pill.optional { display: none; }
+    .nav-right .pill.cand-pill { display: none; }
   }
   @media (max-width: 560px) {
     .wrap { padding: 0 16px; }
@@ -433,7 +473,7 @@
     <div class="nav-right">
       <a class="pill nav-how" href="/how-it-works">How it works</a>
       <span class="pill optional" id="index-pill"><span class="live-dot" aria-hidden="true"></span><span>Indexing…</span></span>
-      <span class="pill">Candidate <b id="candidate">—</b></span>
+      <span class="pill cand-pill">Candidate <b id="candidate">{{candidate}}</b></span>
     </div>
   </nav>
 
@@ -441,8 +481,16 @@
     <div>
       <div class="eyebrow">Evidence, not adjectives</div>
       <h1>Paste a job.<br><span class="soft">See the proof.</span></h1>
-      <p class="lede">FitCheck reads the role, searches <b id="candidate-inline">the candidate</b>'s real code, and marks every requirement
+      <p class="lede">FitCheck reads the role, searches <b id="candidate-inline">{{candidate}}</b>'s real code, and marks every requirement
         <b>Met</b>, <b>Partly met</b> or <b>Not met</b>. Each claim links to the exact lines that prove it.</p>
+      <div class="candidate-card">
+        <span class="cand-avatar" aria-hidden="true">{{candidate_initials}}</span>
+        <span class="cand-text">
+          <span class="cand-label">Candidate being checked</span>
+          <span class="cand-name" id="candidate-hero">{{candidate}}</span>
+        </span>
+        <span class="cand-links">{{candidate_links}}</span>
+      </div>
     </div>
     <div class="stage" aria-hidden="true">
       <canvas id="sphere"></canvas>
@@ -465,6 +513,7 @@
       <button class="btn" id="go" type="submit"><span id="go-label">Check fit</span><span class="kbd" id="kbd">Ctrl ↵</span></button>
     </div>
   </form>
+  <p class="judge" id="judge" aria-live="polite"><span class="judge-label">Judge</span><span class="judge-item">checking…</span></p>
   <p class="privacy">Nothing you paste is stored.</p>
 
   <section class="block reveal pre" id="live" hidden aria-live="polite">
@@ -1121,9 +1170,36 @@ function rowFor(result, index) {
   return row;
 }
 
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Which model judges: the configured scorer, or the free Nemotron backup while an OpenRouter
+   scorer is out of credits / free quota. After a check, what actually judged that check. */
+function judgeState(scorerId, status) {
+  const isNemotron = (id) => /nemotron/i.test(id || "");
+  const judge = $("#judge");
+  const label = '<span class="judge-label">Judge</span>';
+  const item = (m, state, text) =>
+    `<span class="judge-item"><b>${esc(m.name)}</b> · ${esc(m.by)} <span class="state ${state}">${text}</span></span>`;
+  const main = prettyModel(scorerId);
+  if (!main) { judge.innerHTML = `${label}<span class="judge-item">status unavailable</span>`; return; }
+  const fb = status && status.fallback ? prettyModel(status.fallback) : null;
+  if (status && status.out_of_credits && fb) {
+    const mins = Math.max(1, Math.ceil((status.retry_in_s || 0) / 60));
+    judge.innerHTML = label + item(fb, "on", "Active") +
+      item(main, "warn", `Paused: free limit reached, retry in ~${mins} min`);
+  } else if (isNemotron(scorerId)) {
+    judge.innerHTML = label + item(main, "on", "Nemotron active");
+  } else {
+    judge.innerHTML = label + item(main, "on", "Active") +
+      (fb ? item(fb, "standby", isNemotron(status.fallback) ? "Nemotron on standby" : "Standby") : "");
+  }
+}
+
 function renderReport(report) {
   $("#candidate").textContent = report.candidate;
   $("#candidate-inline").textContent = report.candidate;
+  $("#candidate-hero").textContent = report.candidate;
+  if (report.models && report.models.scorer) judgeAfterCheck(report.models.scorer);
   gauge($("#g-code"), report.score, "proven in code");
   const cvGauge = $("#g-cv");
   cvGauge.hidden = report.score_with_cv === report.score;
@@ -1307,14 +1383,33 @@ document.querySelectorAll("[data-sample]").forEach((b) => b.addEventListener("cl
   jdBox.value = SAMPLES[b.dataset.sample]; updateCount(); jdBox.focus();
 }));
 
+let lastStatus = null;
+function judgeAfterCheck(scorerId) {
+  // The report names who judged this check; a backup judge means the main one is paused.
+  const status = lastStatus ? { ...lastStatus } : {};
+  if (status.fallback && scorerId === status.fallback && status.main && status.main !== scorerId) {
+    judgeState(status.main, { ...status, out_of_credits: true });
+  } else {
+    judgeState(scorerId, { ...status, out_of_credits: false });
+  }
+}
+
 fetch("/health").then((r) => r.json()).then((h) => {
-  $("#candidate").textContent = h.candidate || "—";
-  $("#candidate-inline").textContent = h.candidate || "the candidate";
+  if (h.candidate) {
+    $("#candidate").textContent = h.candidate;
+    $("#candidate-inline").textContent = h.candidate;
+    $("#candidate-hero").textContent = h.candidate;
+  }
+  lastStatus = { ...(h.scorer_status || {}), main: (h.models || {}).scorer };
+  judgeState((h.models || {}).scorer, h.scorer_status || {});
   const pill = $("#index-pill");
   pill.lastElementChild.textContent = `${Number(h.indexed_chunks).toLocaleString()} snippets indexed`;
   $("#models").textContent = Object.values(h.models || {}).join(" · ");
   applyStack(h);
-}).catch(() => { $("#index-pill").lastElementChild.textContent = "Offline"; });
+}).catch(() => {
+  $("#index-pill").lastElementChild.textContent = "Offline";
+  judgeState(null);
+});
 </script>
 </body>
 </html>

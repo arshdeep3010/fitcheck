@@ -15,11 +15,12 @@ import hmac
 import json
 import logging
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
@@ -118,9 +119,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # so CloudFront never caches them.
     page_cache = {"Cache-Control": "public, max-age=0, s-maxage=300"}
 
+    def render_index() -> str:
+        """index.html with the candidate filled in on the server, so the name is on screen at
+        once (a cold start can take seconds before /health answers)."""
+        name = settings.candidate_name.strip() or "the candidate"
+        initials = "".join(next((c for c in part if c.isalpha()), "") for part in name.split()[:2]).upper() or "?"
+        github = settings.github_base_url or (
+            f"https://github.com/{settings.github_user}" if settings.github_user else "")
+        links = []
+        if github:
+            links.append(f'<a class="cand-link" href="{escape(github)}" target="_blank" rel="noopener">GitHub ↗</a>')
+        if settings.cv_url:
+            links.append(f'<a class="cand-link" href="{escape(settings.cv_url)}" target="_blank" rel="noopener">CV ↗</a>')
+        page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        return (page.replace("{{candidate_initials}}", escape(initials))
+                    .replace("{{candidate_links}}", "".join(links))
+                    .replace("{{candidate}}", escape(name)))
+
+    index_page = render_index()
+
     @app.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html", headers=page_cache)
+    async def index() -> HTMLResponse:
+        return HTMLResponse(index_page, headers=page_cache)
 
     @app.get("/how-it-works", include_in_schema=False)
     async def how_it_works() -> FileResponse:

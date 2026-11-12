@@ -3,7 +3,7 @@
 
 > **One line:** paste a job description, get an honest fit report for me, where every "met" links to the exact lines of code that prove it, and gaps are shown as gaps.
 >
-> **Status (8 Nov 2026):** recruiter mode built · **119 tests** (111 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
+> **Status (8 Nov 2026):** recruiter mode built · **120 tests** (112 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
 > **Scoring today:** the free Nemotron scorer (`SCORER=llm_json`, now also the default in code). Mercury Decide costs ~₹0.03 per check and needs OpenRouter credits (§7). **On 8 Nov OpenRouter lists Mercury Decide with 0 provider endpoints** (`404 No endpoints found`, with a new key too), so `SCORER=system_one` currently gives Unverified rows with a warning. Nothing in the app can fix that; switch back when it's served again.
 > **Fixed on 7 Nov:** CV search on pgvector returned almost nothing (measured, §6.3); a forged `X-Forwarded-For` could dodge the rate limit; no reconnect after Neon drops idle connections; the default scorer in code didn't match the docs.
 > **Mercury Decide run live:** 84% on 7 Nov (it leaned yes on 4 near misses; grounding demoted all 4). After fixing its status criteria on 8 Nov: 100% on the development set.
@@ -302,7 +302,7 @@ fitcheck/
 │   ├── heldout.jsonl      Held-out set: 31 requirements from 4 real postings, labelled with evidence, frozen by hash
 │   └── run_evals.py       Accuracy, false-claim rate, coverage, latency per scorer
 ├── profile/profile.md     My CV as self-reported claims (public)
-├── tests/                 119 tests: 111 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
+├── tests/                 120 tests: 112 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
 ├── Dockerfile             Non-root, $PORT-aware (any container host)
 ├── lambda.Dockerfile      Same app on the Lambda base image + Lambda Web Adapter
 ├── docker-compose.yml     Postgres + pgvector + app

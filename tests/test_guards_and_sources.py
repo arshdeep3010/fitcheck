@@ -108,3 +108,20 @@ def test_api_report_carries_the_citation_kind(fake_settings):
         results = client.post("/api/fit", json={"jd": JD}).json()["results"]
     kinds = {r["citation"]["kind"] for r in results if r["citation"]}
     assert kinds <= {"github", "code", "cv"} and kinds
+
+
+def test_page_shows_the_candidate_without_waiting_for_health(fake_settings):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    fake_settings.candidate_name = "Ada <Lovelace>"
+    fake_settings.github_base_url = "https://github.com/ada"
+    with TestClient(create_app(fake_settings)) as client:
+        page = client.get("/")
+    assert page.status_code == 200
+    assert "{{" not in page.text                      # every placeholder filled
+    assert "Ada &lt;Lovelace&gt;" in page.text         # escaped, never raw HTML
+    assert ">AL<" in page.text                          # initials
+    assert 'href="https://github.com/ada"' in page.text
+    assert "s-maxage=300" in page.headers["cache-control"]

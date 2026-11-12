@@ -49,7 +49,7 @@ Mercury first scored 84%: on 4 near misses (Kubernetes, Spring Cloud, OAuth2, mi
 
 ```bash
 pip install -r requirements-dev.txt
-PROVIDER_MODE=fake pytest -q                         # offline, no keys (111 pass, 8 pgvector tests skip)
+PROVIDER_MODE=fake pytest -q                         # offline, no keys (112 pass, 8 pgvector tests skip)
 cp .env.example .env                                 # add NVIDIA + OpenRouter keys
 python -m scripts.ingest --github <your-user> --profile profile/profile.md
 uvicorn app.main:app --reload
