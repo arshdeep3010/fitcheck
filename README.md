@@ -11,10 +11,10 @@ FitCheck reads a JD, searches my real repositories, and rates every requirement 
 ## How it works
 
 ```
-parse_jd (Nemotron) → retrieve (vector search on pgvector; keyword search opt-in) → score (1 call: Nemotron or Mercury Decide) → ground (code rules) → report (code)
+parse_jd (Nemotron) → retrieve (vector search on pgvector; keyword search opt-in) → score (1 call: Nemotron, Mercury Decide or Parallel Decisions) → ground (code rules) → report (code)
 ```
 
-- The scorer picks a status and its proof **only from chunks that were actually retrieved**. It's a switch: the free Nemotron scorer by default, or Mercury Decide (`SCORER=system_one`), a decision model whose confidence varies with the evidence instead of sitting at ~0.95.
+- The scorer picks a status and its proof **only from chunks that were actually retrieved**. It's a switch: the free Nemotron scorer by default, or a decision model whose confidence varies with the evidence instead of sitting at ~0.95: Mercury Decide (`SCORER=system_one`, paid) or Parallel Decisions (`SCORER=parallel`, free). Parallel always searches the web and that can't be turned off, so FitCheck drops its web sources, lets it cite only retrieved code, and replaces my name before sending anything. It's live-checked, not yet measured on the held-out set.
 - Technology lists are split ("Spring Security, OAuth2 and JWT" → 3 rows), so each one needs its own evidence.
 - **Code decides what's claimed:** no citation or low confidence → Unverified. Outages → nothing claimed.
 - **Proof and claims never look alike:** GitHub code gets a solid badge and a commit permalink; CV lines get a dashed "CV claim" badge, sit in their own box marked "Not proven by code", and count only in the second score.
@@ -49,7 +49,7 @@ Mercury first scored 84%: on 4 near misses (Kubernetes, Spring Cloud, OAuth2, mi
 
 ```bash
 pip install -r requirements-dev.txt
-PROVIDER_MODE=fake pytest -q                         # offline, no keys (105 pass, 8 pgvector tests skip)
+PROVIDER_MODE=fake pytest -q                         # offline, no keys (111 pass, 8 pgvector tests skip)
 cp .env.example .env                                 # add NVIDIA + OpenRouter keys
 python -m scripts.ingest --github <your-user> --profile profile/profile.md
 uvicorn app.main:app --reload

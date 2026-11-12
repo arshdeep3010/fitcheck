@@ -1,4 +1,4 @@
-"""Fit scoring with a System One decision model (Mercury Decide / Jev).
+"""Fit scoring with a System One decision model (Mercury Decide).
 
 All requirements go in ONE request: questions run in parallel on the model side,
 and one call per JD keeps us well inside free-tier rate limits.
@@ -9,6 +9,8 @@ Per requirement we ask two Choice questions:
 The proof question can only pick from chunks we actually retrieved, so the model
 cannot point at evidence that doesn't exist.
 """
+
+from collections.abc import Callable
 
 from app.llm.system_one import SystemOneClient
 from app.models import Evidence, Requirement, RequirementScore
@@ -31,9 +33,15 @@ STATUS_CRITERIA = {
 SNIPPET_CHARS = 1200
 
 
-def build_request(requirements: list[Requirement], evidence: dict[str, list[Evidence]]
+def build_request(requirements: list[Requirement], evidence: dict[str, list[Evidence]],
+                  redact: Callable[[str], str] | None = None,
                   ) -> tuple[dict, dict, dict[str, dict[str, str]]]:
-    """Returns (state, questions, option_to_chunk_id per requirement)."""
+    """Returns (state, questions, option_to_chunk_id per requirement).
+
+    `redact` rewrites every text sent (requirements, snippets, sources), e.g. to remove the
+    candidate's name before it reaches a model that searches the web.
+    """
+    redact = redact or (lambda text: text)
     from_cv = any(ev.chunk.source_type == "self_reported" for items in evidence.values() for ev in items)
     state: dict = {
         "about": ("Evidence is the candidate's own CV text: self-reported claims."
@@ -48,9 +56,10 @@ def build_request(requirements: list[Requirement], evidence: dict[str, list[Evid
         items = evidence.get(req.id, [])
         if not items:
             continue
-        state["requirements"][req.id] = req.text
+        text = redact(req.text)
+        state["requirements"][req.id] = text
         state["evidence"][req.id] = {
-            f"e{i}": {"source": ev.chunk.source, "text": ev.chunk.text[:SNIPPET_CHARS]}
+            f"e{i}": {"source": redact(ev.chunk.source), "text": redact(ev.chunk.text[:SNIPPET_CHARS])}
             for i, ev in enumerate(items)
         }
         option_maps[req.id] = {f"e{i}": ev.chunk.id for i, ev in enumerate(items)}
@@ -58,15 +67,15 @@ def build_request(requirements: list[Requirement], evidence: dict[str, list[Evid
         questions[f"{req.id}_status"] = {
             "type": "choice",
             "instructions": (f'Judging only from evidence.{req.id}, does the candidate meet '
-                             f'requirement {req.id}: "{req.text}"?'),
+                             f'requirement {req.id}: "{text}"?'),
             "criteria": STATUS_CRITERIA,
         }
-        proof_options = {f"e{i}": ev.chunk.source for i, ev in enumerate(items)}
+        proof_options = {f"e{i}": redact(ev.chunk.source) for i, ev in enumerate(items)}
         proof_options["none"] = "No listed item proves this requirement."
         questions[f"{req.id}_proof"] = {
             "type": "choice",
             "instructions": (f'Which item in evidence.{req.id} best proves requirement '
-                             f'{req.id} ("{req.text}")? Choose none if no item proves it.'),
+                             f'{req.id} ("{text}")? Choose none if no item proves it.'),
             "criteria": proof_options,
         }
     return state, questions, option_maps

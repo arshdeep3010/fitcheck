@@ -8,12 +8,17 @@ from app.jd_parser import JdParser
 from app.llm.chat import OpenAICompatibleChat
 from app.llm.credits import CreditPause
 from app.llm.embeddings import Embedder, HashEmbedder, OpenAICompatibleEmbedder
+from app.llm.decisions import DecisionsClient
 from app.llm.system_one import SystemOneClient
 from app.rag.store import InMemoryStore, PgVectorStore, VectorStore
 from app.scoring import FitScorer
 from app.scoring.keyword import KeywordFitScorer
 from app.scoring.llm_json import LlmJsonFitScorer
+from app.scoring.parallel import ParallelFitScorer, identity_terms
 from app.scoring.system_one import SystemOneFitScorer
+
+
+OPENROUTER_SCORERS = ("system_one", "parallel")
 
 
 def build_store(settings: Settings) -> VectorStore:
@@ -40,7 +45,12 @@ def build_scorer(settings: Settings, http: httpx.AsyncClient, chat: OpenAICompat
     if settings.scorer == "system_one":
         return SystemOneFitScorer(SystemOneClient(
             http, settings.openrouter_base_url, settings.openrouter_api_key, settings.decide_model))
-    raise ValueError(f"Unknown SCORER {settings.scorer!r}: use system_one or llm_json")
+    if settings.scorer == "parallel":
+        return ParallelFitScorer(
+            DecisionsClient(http, settings.openrouter_decisions_url, settings.openrouter_api_key,
+                            settings.parallel_model),
+            redact_terms=identity_terms(settings.candidate_name, settings.github_user))
+    raise ValueError(f"Unknown SCORER {settings.scorer!r}: use llm_json, system_one or parallel")
 
 
 def build_deps(settings: Settings, http: httpx.AsyncClient) -> Deps:
@@ -64,9 +74,10 @@ def build_deps(settings: Settings, http: httpx.AsyncClient) -> Deps:
 
 def build_fallback(settings: Settings, http: httpx.AsyncClient,
                    chat: OpenAICompatibleChat | None) -> FitScorer | None:
-    """A free scorer for when the paid one's credits run out. Only the paid scorer needs one."""
-    if chat is None or settings.scorer != "system_one" or not settings.scorer_fallback:
+    """A scorer for when OpenRouter's credits or free daily quota run out. Only the OpenRouter
+    scorers (system_one, parallel) need one."""
+    if chat is None or settings.scorer not in OPENROUTER_SCORERS or not settings.scorer_fallback:
         return None
-    if settings.scorer_fallback == "system_one":
-        raise ValueError("SCORER_FALLBACK must be a different scorer than system_one")
+    if settings.scorer_fallback in OPENROUTER_SCORERS:
+        raise ValueError("SCORER_FALLBACK must be a scorer that doesn't use OpenRouter (llm_json)")
     return build_scorer(settings.model_copy(update={"scorer": settings.scorer_fallback}), http, chat)

@@ -27,14 +27,19 @@ class Settings(BaseSettings):
     embedding_model: str = "nvidia/nemotron-3-embed-1b"  # 3.5 rejects batched code chunks on the free tier
     embedding_input_type: bool = True  # NVIDIA retrieval models expect "query" vs "passage"
 
-    # Fit scorer: "system_one" (decision model on OpenRouter, calibrated confidence, paid but
-    # ~$0.02 per million input tokens) or "llm_json" (the NVIDIA chat model, free, uncalibrated).
+    # Fit scorer: "llm_json" (the NVIDIA chat model, free, uncalibrated), "system_one"
+    # (Mercury Decide on OpenRouter, calibrated confidence, paid but ~$0.02 per million input
+    # tokens) or "parallel" (Parallel Decisions on OpenRouter, free; it searches the web, which
+    # can't be turned off, so its web sources are discarded and only retrieved code is cited).
     scorer: str = "llm_json"
 
     # OpenRouter: only for the System One decision model (fit scoring).
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     decide_model: str = "inception/mercury-decide"  # the ":free" variant was withdrawn in Nov 2026
+    # Parallel Decisions: OpenRouter's Decisions API (alpha), same request shape as System One.
+    parallel_model: str = "parallel/decisions-fast:free"
+    openrouter_decisions_url: str = "https://openrouter.ai/api/alpha/decisions"
     # When OpenRouter says the credits (or the free daily quota) are used up, score with this
     # free scorer instead and say so in the report ("" = no fallback: nothing is claimed).
     scorer_fallback: str = "llm_json"

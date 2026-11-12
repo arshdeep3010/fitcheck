@@ -3,7 +3,7 @@
 
 > **One line:** paste a job description, get an honest fit report for me, where every "met" links to the exact lines of code that prove it, and gaps are shown as gaps.
 >
-> **Status (8 Nov 2026):** recruiter mode built · **113 tests** (105 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
+> **Status (8 Nov 2026):** recruiter mode built · **119 tests** (111 offline + 8 against a real pgvector 0.8.7, also run in CI) · live runs done with NVIDIA chat + embeddings · **the app syncs with GitHub on its own** (startup + every 30 min, §3.6) · a **How it works** page at `/how-it-works` · **final check done 8 Nov**: all tests, evals, a real JD end to end in the browser, the Docker image (§9).
 > **Scoring today:** the free Nemotron scorer (`SCORER=llm_json`, now also the default in code). Mercury Decide costs ~₹0.03 per check and needs OpenRouter credits (§7). **On 8 Nov OpenRouter lists Mercury Decide with 0 provider endpoints** (`404 No endpoints found`, with a new key too), so `SCORER=system_one` currently gives Unverified rows with a warning. Nothing in the app can fix that; switch back when it's served again.
 > **Fixed on 7 Nov:** CV search on pgvector returned almost nothing (measured, §6.3); a forged `X-Forwarded-For` could dodge the rate limit; no reconnect after Neon drops idle connections; the default scorer in code didn't match the docs.
 > **Mercury Decide run live:** 84% on 7 Nov (it leaned yes on 4 near misses; grounding demoted all 4). After fixing its status criteria on 8 Nov: 100% on the development set.
@@ -253,7 +253,7 @@ Must-have requirements weigh **2**, nice-to-have weigh **1**. Two scores:
 | **Exact search for the CV, HNSW for code** | HNSW filters *after* finding its nearest ~40 rows. CV sections are ~1% of rows, so a filtered HNSW search for them came back nearly empty (measured, §6.3). The CV has a handful of rows, so exact search is cheap; code search keeps HNSW plus pgvector's iterative scan. |
 | **Proof and claims look different** | A reader skimming the report must never mistake a CV line for proven code. Different badges, a separate dashed box, and two separate scores. |
 | **No-index marker + secret filter** | Files that *quote* requirements (sample JDs, prompts, tests) are not evidence. Chunks that look like credentials are never indexed, because snippets are shown publicly. |
-| **Strategy pattern everywhere** | Chat, embeddings, scorer and store are interfaces. Swap Mercury Decide ↔ Jev ↔ LLM, or JSON ↔ pgvector, by config. That's also what makes the evals possible. |
+| **Strategy pattern everywhere** | Chat, embeddings, scorer and store are interfaces. Swap Nemotron ↔ Mercury Decide ↔ Parallel Decisions, or JSON ↔ pgvector, by config. That's also what makes the evals possible. |
 | **Offline "fake" mode** | Tests and CI need no keys and no network. Anyone can run the project in 1 minute. |
 | **Deterministic report** | The score and summary are arithmetic, so they're reproducible and explainable. |
 
@@ -278,7 +278,8 @@ fitcheck/
 │   │   ├── http.py        POST with auth, retries + exponential backoff on 429/5xx/529
 │   │   ├── chat.py        OpenAI-compatible chat (NVIDIA Nemotron), JSON extraction
 │   │   ├── embeddings.py  NVIDIA embeddings (query/passage) + offline HashEmbedder
-│   │   └── system_one.py  System One client (Mercury Decide / Jev)
+│   │   ├── system_one.py  System One client (Mercury Decide)
+│   │   └── decisions.py   OpenRouter Decisions client (Parallel); drops the web sources it returns
 │   ├── rag/
 │   │   ├── chunker.py     Repo → line-ranged chunks; skips secrets, env, build dirs, no-index files
 │   │   ├── store.py       VectorStore: InMemoryStore (JSON, copy-on-write) + PgVectorStore (pool, HNSW, exact CV search, BM25 in SQL)
@@ -301,7 +302,7 @@ fitcheck/
 │   ├── heldout.jsonl      Held-out set: 31 requirements from 4 real postings, labelled with evidence, frozen by hash
 │   └── run_evals.py       Accuracy, false-claim rate, coverage, latency per scorer
 ├── profile/profile.md     My CV as self-reported claims (public)
-├── tests/                 113 tests: 105 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
+├── tests/                 119 tests: 111 offline + 8 against real pgvector (skipped without TEST_DATABASE_URL)
 ├── Dockerfile             Non-root, $PORT-aware (any container host)
 ├── lambda.Dockerfile      Same app on the Lambda base image + Lambda Web Adapter
 ├── docker-compose.yml     Postgres + pgvector + app
@@ -499,12 +500,13 @@ CREATE INDEX chunks_terms_gin ON chunks USING gin (terms);
 | Embeddings | `nvidia/nemotron-3-embed-1b` (2048-d) | NVIDIA API | Free tier |
 | Fit scoring (default today) | `nvidia/nemotron-3-ultra-550b-a55b` as a JSON scorer (`SCORER=llm_json`) | NVIDIA API | Free tier |
 | Fit scoring (calibrated) | `inception/mercury-decide` (`SCORER=system_one`) | OpenRouter System One API | $0.02 / M input tokens, output free ≈ **₹0.03 per check**; needs OpenRouter credits |
+| Fit scoring (calibrated, free) | `parallel/decisions-fast:free` (`SCORER=parallel`) | OpenRouter Decisions API (alpha) | ₹0 (a live call reported `cost: 0`); free-tier daily quota |
 | Database | Postgres + pgvector | Neon / Supabase free tier | ₹0 |
 | Hosting | AWS Lambda (container image) behind CloudFront, Terraform in `infra/` | Lambda always-free allowance | ₹0 to a few rupees a month (§10) |
 
 Every model is one env var, so if a free model disappears, change one line. That already happened once: `inception/mercury-decide:free` was withdrawn in Nov 2026, so the scorer became a switch (`SCORER`), and the app runs free on Nemotron until there are OpenRouter credits.
 
-**When OpenRouter credits run out (`SCORER=system_one`):** OpenRouter answers `402` (no credits) or `429 free-models-per-day` (free daily quota used up). `app/llm/http.py` raises `CreditsExhaustedError` for both and doesn't retry them, because retrying can't help (a normal `429` rate limit is still retried). The graph then:
+**When OpenRouter credits run out (`SCORER=system_one` or `parallel`):** OpenRouter answers `402` (no credits) or `429 free-models-per-day` (free daily quota used up). `app/llm/http.py` raises `CreditsExhaustedError` for both and doesn't retry them, because retrying can't help (a normal `429` rate limit is still retried). The graph then:
 - scores that check with the free fallback (`SCORER_FALLBACK=llm_json`, Nemotron), and the report says so: *"The main scorer (inception/mercury-decide) is out of credits right now, so this check was scored by the backup model (nvidia/nemotron-...)."* `models.scorer` in the report names the model that actually judged.
 - stops asking OpenRouter for `CREDIT_PAUSE_MINUTES` (15), then tries once more, because credits may have been topped up and the daily quota resets at midnight UTC. `/health` shows `scorer_status.out_of_credits` and `retry_in_s`.
 - logs the fix for the owner (top up, or `SCORER=llm_json`). The visitor-facing notice has no account details.
@@ -802,6 +804,7 @@ Citations to GitHub repos are commit permalinks, so they never point at the wron
 | Prompts were fixed by looking at the development set | The 8 Nov 100% on `dataset.jsonl` is optimistic; the held-out 97% / 90% is the honest number | Keep developing on `dataset.jsonl`; build a new held-out set for each prompt or retrieval change |
 | Retrieval misses requirements that are lists of names | "AutoGen, CrewAI, or LangGraph" retrieved the README, not `app/graph.py` (≈0.20 similarity everywhere) | Hybrid search retrieves `graph.py` (8 Nov), but it's **off by default**: with Nemotron it added 1–2 false claims per held-out run. Re-test it with Mercury on a new held-out set |
 | Hybrid search shows more mention-only chunks | A scorer that counts mentions claims more: the keyword baseline went from 54% to 92% false claims on the development set, and Nemotron claimed PyTorch from a list of skill names | Keep hybrid opt-in; a stronger scorer (Mercury); near misses in every eval set |
+| Parallel Decisions always searches the web | Neither OpenRouter nor Parallel can turn it off; web results could sway a verdict even though they can't be cited | Web sources are dropped, only retrieved chunks can be cited, the name is redacted. Whether the web sways verdicts is for the held-out eval to show (not run yet) |
 | Mercury Decide not served (8 Nov) | OpenRouter lists it with 0 endpoints, so `SCORER=system_one` returns Unverified rows | Wait for it to come back, or switch to another decision model (one env var) |
 | Grounding can't catch a weak but real citation | Nemotron cited an architecture doc as proof of "microservices" | A per-requirement check that the cited snippet contains the key term, or a second judge pass on the cited snippet only |
 | pgvector tested in Docker, not on Neon | 3 tests pass on pgvector 0.8.7; Neon's suspend/resume is simulated by killing connections | One real ingest + check on Neon before going public |

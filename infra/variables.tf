@@ -59,13 +59,13 @@ variable "candidate_name" {
 }
 
 variable "scorer" {
-  description = "llm_json = the free NVIDIA Nemotron judge. system_one = Mercury Decide on OpenRouter (paid; falls back to Nemotron when the credits run out)."
+  description = "llm_json = the free NVIDIA Nemotron judge. system_one = Mercury Decide on OpenRouter (paid). parallel = Parallel Decisions on OpenRouter (free; searches the web, but only retrieved code can be cited). Both OpenRouter scorers fall back to Nemotron when credits or the free quota run out."
   type        = string
   default     = "llm_json"
 
   validation {
-    condition     = contains(["llm_json", "system_one"], var.scorer)
-    error_message = "scorer must be llm_json or system_one."
+    condition     = contains(["llm_json", "system_one", "parallel"], var.scorer)
+    error_message = "scorer must be llm_json, system_one or parallel."
   }
 }
 

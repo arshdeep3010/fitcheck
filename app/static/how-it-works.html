@@ -511,8 +511,9 @@ const MODEL_NAMES = {
   "nemotron-3-embed-1b": "Nemotron Embed 1B",
   "nemotron-3.5-embed-1b": "Nemotron 3.5 Embed",
   "mercury-decide": "Mercury Decide",
+  "decisions-fast": "Parallel Decisions Fast",
 };
-const VENDORS = { nvidia: "NVIDIA", inception: "Inception", openai: "OpenAI" };
+const VENDORS = { nvidia: "NVIDIA", inception: "Inception", parallel: "Parallel", openai: "OpenAI" };
 function prettyModel(id) {
   if (!id) return null;
   const raw = id.replace(/^llm-json:/, "");

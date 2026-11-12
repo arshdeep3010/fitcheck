@@ -1,4 +1,4 @@
-"""Client for the System One API (Mercury Decide, Jev): state + typed questions -> typed answers."""
+"""Client for the System One API (Mercury Decide): state + typed questions -> typed answers."""
 
 import httpx
 

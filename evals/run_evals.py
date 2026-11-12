@@ -3,6 +3,7 @@
 Usage (from the fitcheck folder, after building the index):
     python -m evals.run_evals                         # all scorers available in this mode
     python -m evals.run_evals --scorers keyword system_one
+    python -m evals.run_evals --scorers parallel        # Parallel Decisions (free)
     python -m evals.run_evals --dataset heldout        # the held-out set: run it ONCE per prompt version
 
 Requirements are given directly (the JD parser is skipped), so this isolates
@@ -30,7 +31,7 @@ from pathlib import Path
 import httpx
 
 from app.config import get_settings
-from app.deps import build_chat, build_embedder, build_store
+from app.deps import build_chat, build_embedder, build_scorer, build_store
 from app.grounding import ground
 from app.llm.http import CreditsExhaustedError
 from app.llm.system_one import SystemOneClient
@@ -109,7 +110,7 @@ async def evaluate(scorer, cases: list[dict], embedder, store, settings) -> dict
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scorers", nargs="*", default=None,
-                        help="keyword | system_one | llm_json (default: all available)")
+                        help="keyword | system_one | llm_json | parallel (default: all available)")
     parser.add_argument("--dataset", choices=sorted(DATASETS), default="main")
     parser.add_argument("--retrieval", choices=["hybrid", "vector"], default=None,
                         help="override RETRIEVAL from the environment (default: vector)")
@@ -141,6 +142,9 @@ async def main() -> None:
             available["system_one"] = SystemOneFitScorer(SystemOneClient(
                 http, settings.openrouter_base_url, settings.openrouter_api_key, settings.decide_model))
             available["llm_json"] = LlmJsonFitScorer(build_chat(settings, http))
+            # Same construction as the app (deps.build_scorer): name redacted, web sources dropped.
+            available["parallel"] = build_scorer(settings.model_copy(update={"scorer": "parallel"}),
+                                                 http, chat=None)
         chosen = args.scorers or list(available)
 
         try:
