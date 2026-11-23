@@ -125,3 +125,23 @@ def test_page_shows_the_candidate_without_waiting_for_health(fake_settings):
     assert ">AL<" in page.text                          # initials
     assert 'href="https://github.com/ada"' in page.text
     assert "s-maxage=300" in page.headers["cache-control"]
+
+
+async def test_embedder_asks_for_the_index_dimension():
+    import httpx
+
+    from app.llm.embeddings import OpenAICompatibleEmbedder
+
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+        seen.append(json.loads(request.content))
+        n = len(seen[-1]["input"])
+        return httpx.Response(200, json={"data": [{"index": i, "embedding": [0.1] * 2048} for i in range(n)]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        embedder = OpenAICompatibleEmbedder(http, "https://x/v1", "k", "nvidia/nemotron-3.5-embed-8b", dimensions=2048)
+        vectors = await embedder.embed(["a", "b"], kind="query")
+    assert len(vectors) == 2 and len(vectors[0]) == 2048
+    assert seen[0]["dimensions"] == 2048 and seen[0]["input_type"] == "query"

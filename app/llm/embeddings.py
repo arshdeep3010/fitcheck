@@ -22,13 +22,16 @@ class OpenAICompatibleEmbedder:
     """POST /embeddings. NVIDIA retrieval models want input_type=query|passage."""
 
     def __init__(self, http: httpx.AsyncClient, base_url: str, api_key: str, model: str,
-                 send_input_type: bool = True, batch_size: int = 16):
+                 send_input_type: bool = True, batch_size: int = 16, dimensions: int = 0):
         self._http = http
         self._url = base_url.rstrip("/") + "/embeddings"
         self._api_key = api_key
         self.name = model
         self._send_input_type = send_input_type
         self._batch_size = batch_size
+        # 0 = the model's native size. Some models (nemotron-3.5-embed-8b: 4096) can return a
+        # shorter vector; the index stores 2048-d vectors, so it asks for that.
+        self._dimensions = dimensions
 
     async def embed(self, texts: list[str], kind: Kind) -> list[list[float]]:
         vectors: list[list[float]] = []
@@ -40,6 +43,8 @@ class OpenAICompatibleEmbedder:
         """Some free-tier endpoints reject large requests with a 500. Split and retry
         instead of failing the whole ingest; a single text that still fails is a real error."""
         payload: dict = {"model": self.name, "input": batch, "encoding_format": "float"}
+        if self._dimensions:
+            payload["dimensions"] = self._dimensions
         if self._send_input_type:
             payload["input_type"] = kind
             payload["truncate"] = "END"

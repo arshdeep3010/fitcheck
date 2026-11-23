@@ -31,7 +31,8 @@ def build_embedder(settings: Settings, http: httpx.AsyncClient) -> Embedder:
     if settings.provider_mode == "fake":
         return HashEmbedder()
     return OpenAICompatibleEmbedder(http, settings.nvidia_base_url, settings.nvidia_api_key,
-                                    settings.embedding_model, settings.embedding_input_type)
+                                    settings.embedding_model, settings.embedding_input_type,
+                                    dimensions=settings.embedding_dimensions)
 
 
 def build_chat(settings: Settings, http: httpx.AsyncClient) -> OpenAICompatibleChat:

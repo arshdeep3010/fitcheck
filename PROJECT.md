@@ -497,7 +497,7 @@ CREATE INDEX chunks_terms_gin ON chunks USING gin (terms);
 | Step | Model | Provider | Cost |
 |---|---|---|---|
 | JD → requirements | `nvidia/nemotron-3-ultra-550b-a55b` | NVIDIA API (build.nvidia.com) | Free tier |
-| Embeddings | `nvidia/nemotron-3-embed-1b` (2048-d) | NVIDIA API | Free tier |
+| Embeddings | `nvidia/nemotron-3.5-embed-8b`, asked for 2048-d (the model's native size is 4096) | NVIDIA API | Free tier |
 | Fit scoring (default today) | `nvidia/nemotron-3-ultra-550b-a55b` as a JSON scorer (`SCORER=llm_json`) | NVIDIA API | Free tier |
 | Fit scoring (calibrated) | `inception/mercury-decide` (`SCORER=system_one`) | OpenRouter System One API | $0.02 / M input tokens, output free ≈ **₹0.03 per check**; needs OpenRouter credits |
 | Fit scoring (calibrated, free) | `parallel/decisions-fast:free` (`SCORER=parallel`) | OpenRouter Decisions API (alpha) | ₹0 (a live call reported `cost: 0`); free-tier daily quota |
@@ -518,7 +518,7 @@ The eval runner never falls back: an eval must measure the scorer it names, so i
 
 **8 Nov: examples taken out of the prompts.** Both scorers' instructions used to give examples that are *in the eval set* (Docker/Kubernetes, microservices, LangGraph/LangChain, "Spring Security, OAuth2 and JWT"), which flatters the evals. They now use technologies that appear nowhere in `evals/dataset.jsonl` (Flask/Django, MySQL/PostgreSQL, Jenkins/GitHub Actions, "Flask, Celery and RabbitMQ"). Mercury's `partial` criterion was also fixed (§9).
 
-**Why not `nemotron-3.5-embed-1b`?** On the free tier it returns `500 service inference failed` whenever one request carries several long code chunks (single short texts work). `nemotron-3-embed-1b` batches fine. The embedder also splits a failing batch in half and retries, so either model works, just slower. `CHAT_THINKING=true` turns on Nemotron's reasoning mode: better on messy JDs, much slower.
+**Embedding model history.** `nemotron-3-embed-1b` was retired by NVIDIA on 2026-11-23 (HTTP 410), which broke every check at the retrieval step. Its successor `nemotron-3.5-embed-1b` returned `500` on batches of long code chunks, so the index moved to `nemotron-3.5-embed-8b`, asked for 2048 dimensions (`dimensions` in the request), so the index schema didn't change. The index was re-embedded with it. The embedder splits a failing batch in half and retries. `CHAT_THINKING=true` turns on Nemotron's reasoning mode: better on messy JDs, much slower.
 
 Free tiers are rate limited. A check makes **3 model calls** (1 chat, 1 embeddings batch, 1 scorer call), plus **2 more** (embeddings + scorer) when some rows go to the CV pass. That's why the public demo allows 20 checks per IP per hour and **200 per day in total** (`DAILY_LIMIT`), so rotating IPs can't burn the free quotas.
 
@@ -804,6 +804,7 @@ Citations to GitHub repos are commit permalinks, so they never point at the wron
 | Prompts were fixed by looking at the development set | The 8 Nov 100% on `dataset.jsonl` is optimistic; the held-out 97% / 90% is the honest number | Keep developing on `dataset.jsonl`; build a new held-out set for each prompt or retrieval change |
 | Retrieval misses requirements that are lists of names | "AutoGen, CrewAI, or LangGraph" retrieved the README, not `app/graph.py` (≈0.20 similarity everywhere) | Hybrid search retrieves `graph.py` (8 Nov), but it's **off by default**: with Nemotron it added 1–2 false claims per held-out run. Re-test it with Mercury on a new held-out set |
 | Hybrid search shows more mention-only chunks | A scorer that counts mentions claims more: the keyword baseline went from 54% to 92% false claims on the development set, and Nemotron claimed PyTorch from a list of skill names | Keep hybrid opt-in; a stronger scorer (Mercury); near misses in every eval set |
+| 52 code chunks are not searchable (23 Nov 2026) | NVIDIA's content screening rejects them in the embedding models it serves (vibe-audit 28, llm-gateway 8, health-claim-decision-agent 7, agentops 6, fitcheck 3), so they were left out of the index when the embedding model was replaced. Proof for requirements that only these files show is missing | Wait for NVIDIA's screening to accept them, or re-embed them with another provider's model (a second index column) |
 | Parallel Decisions always searches the web | Neither OpenRouter nor Parallel can turn it off; web results could sway a verdict even though they can't be cited | Web sources are dropped, only retrieved chunks can be cited, the name is redacted. Whether the web sways verdicts is for the held-out eval to show (not run yet) |
 | Mercury Decide not served (8 Nov) | OpenRouter lists it with 0 endpoints, so `SCORER=system_one` returns Unverified rows | Wait for it to come back, or switch to another decision model (one env var) |
 | Grounding can't catch a weak but real citation | Nemotron cited an architecture doc as proof of "microservices" | A per-requirement check that the cited snippet contains the key term, or a second judge pass on the cited snippet only |

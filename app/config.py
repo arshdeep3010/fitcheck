@@ -24,7 +24,10 @@ class Settings(BaseSettings):
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     chat_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
     chat_thinking: bool = False  # reasoning mode: better on messy JDs, much slower
-    embedding_model: str = "nvidia/nemotron-3-embed-1b"  # 3.5 rejects batched code chunks on the free tier
+    # nemotron-3-embed-1b was retired by NVIDIA on 2026-11-23. The 8B successor returns 4096-d
+    # vectors by default; asking for 2048 keeps the index schema (HNSW needs <= 4000 for halfvec).
+    embedding_model: str = "nvidia/nemotron-3.5-embed-8b"
+    embedding_dimensions: int = 2048
     embedding_input_type: bool = True  # NVIDIA retrieval models expect "query" vs "passage"
 
     # Fit scorer: "llm_json" (the NVIDIA chat model, free, uncalibrated), "system_one"
